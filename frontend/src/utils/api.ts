@@ -71,6 +71,11 @@ class ApiClient {
     return this.request('/academic/courses');
   }
 
+  // Get only the courses the student is enrolled in
+  async getMyCourses() {
+    return this.request('/courses/my-courses');
+  }
+
   async getAttendance(courseId?: string) {
     const queryString = courseId ? `?courseId=${courseId}` : '';
     return this.request(`/academic/attendance${queryString}`);

@@ -94,9 +94,20 @@ router.get('/attendance', auth, async (req, res) => {
 // @route   POST /api/academic/attendance
 // @desc    Mark attendance (faculty only)
 // @access  Private
-router.post('/attendance', auth, authorize('faculty'), async (req, res) => {
+router.post('/attendance', auth, authorize('faculty', 'admin'), async (req, res) => {
   try {
     const { courseId, studentId, date, status, remarks } = req.body;
+    const course = await Course.findById(courseId);
+    console.log('[ATTENDANCE] User:', req.user && req.user._id, 'Role:', req.user && req.user.role, 'Course faculty:', course && course.faculty);
+
+    // Check if the faculty owns the course or is admin
+    if (!course) {
+      return res.status(404).json({ message: 'Course not found' });
+    }
+    const isAdmin = req.user.role === 'admin';
+    if (!isAdmin && course.faculty.toString() !== req.user._id.toString()) {
+      return res.status(403).json({ message: `You are not authorized to mark attendance for this course. Your user ID: ${req.user._id}, course faculty: ${course.faculty}` });
+    }
 
     // Check if attendance already exists
     const existingAttendance = await Attendance.findOne({

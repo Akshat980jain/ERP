@@ -8,19 +8,25 @@ import { StudentDashboard } from './components/dashboard/StudentDashboard';
 import { FacultyDashboard } from './components/dashboard/FacultyDashboard';
 import { AdminDashboard } from './components/dashboard/AdminDashboard';
 import { AcademicModule } from './components/modules/AcademicModule';
-import { StudentServices } from './components/modules/StudentServices';
+import { CourseModule } from './components/modules/CourseModule'; // Add this import
+import UserManagement from './components/modules/UserManagement';
+import RequestVerificationPage from './components/auth/RequestVerificationPage';
+import { AttendanceModule } from './components/modules/AttendanceModule';
+import { MarksModule } from './components/modules/MarksModule';
+import { StudentModule } from './components/modules/StudentModule';
+import { ScheduleModule } from './components/modules/ScheduleModule';
 import { NotificationModule } from './components/modules/NotificationModule';
 import { FinanceModule } from './components/modules/FinanceModule';
 import { LibraryModule } from './components/modules/LibraryModule';
 import { PlacementModule } from './components/modules/PlacementModule';
 import { ProfileModule } from './components/modules/ProfileModule';
-import UserManagement from './components/modules/UserManagement';
-import RequestVerificationPage from './components/auth/RequestVerificationPage';
+import { StudentServices } from './components/modules/StudentServices';
 
 function AppContent() {
   const { user, isLoading } = useAuth();
   const [activeTab, setActiveTab] = useState('dashboard');
   const unreadNotificationCount = 5;
+  
   const handleNotificationClick = () => {
     setActiveTab('notifications');
   };
@@ -64,20 +70,54 @@ function AppContent() {
                       }
                     case 'academic':
                       return <AcademicModule />;
+                    case 'courses': // Faculty: My Courses, Admin: Course Management
+                      return <CourseModule />;
+                    case 'attendance': // Faculty only
+                      return <AttendanceModule />;
+                    case 'marks': // Faculty only
+                      return <MarksModule />;
+                    case 'students': // Faculty only
+                      return <StudentModule />;
+                    case 'schedule': // Faculty only
+                      return <ScheduleModule />;
+                    case 'notifications':
+                      return <NotificationModule />;
                     case 'finance':
                       return <FinanceModule />;
                     case 'library':
                       return <LibraryModule />;
                     case 'placement':
                       return <PlacementModule />;
-                    case 'services':
-                      return <StudentServices />;
                     case 'profile':
                       return <ProfileModule />;
-                    case 'notifications':
-                      return <NotificationModule />;
-                    case 'users':
+                    case 'services':
+                      return <StudentServices />;
+                    case 'analytics': // Admin only
+                      // TODO: Replace with AnalyticsModule if available
+                      return (
+                        <div className="text-center py-12">
+                          <h2 className="text-2xl font-semibold text-gray-900 mb-4">Analytics</h2>
+                          <p className="text-gray-600">This module is under development...</p>
+                        </div>
+                      );
+                    case 'users': // Admin: User Management
                       return <UserManagement />;
+                    case 'reports': // Admin only
+                      // TODO: Replace with ReportsModule if available
+                      return (
+                        <div className="text-center py-12">
+                          <h2 className="text-2xl font-semibold text-gray-900 mb-4">Reports</h2>
+                          <p className="text-gray-600">This module is under development...</p>
+                        </div>
+                      );
+                    case 'settings': // Admin only
+                      // TODO: Replace with SettingsModule if available
+                      return (
+                        <div className="text-center py-12">
+                          <h2 className="text-2xl font-semibold text-gray-900 mb-4">System Settings</h2>
+                          <p className="text-gray-600">This module is under development...</p>
+                        </div>
+                      );
                     default:
                       return (
                         <div className="text-center py-12">

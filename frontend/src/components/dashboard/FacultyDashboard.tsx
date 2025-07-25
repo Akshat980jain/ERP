@@ -5,7 +5,10 @@ import { useAuth } from '../../contexts/AuthContext';
 // AddStudentPanel: visible to faculty/admin
 function AddStudentPanel() {
   const { user, token } = useAuth();
-  const [form, setForm] = useState({ name: '', email: '', password: '', department: '' });
+  // If faculty, lock department to their own; if admin, allow editing
+  const facultyProgram = user?.department || user?.program || '';
+  const isFaculty = user?.role === 'faculty';
+  const [form, setForm] = useState({ name: '', email: '', password: '', department: facultyProgram });
   const [status, setStatus] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
@@ -22,18 +25,27 @@ function AddStudentPanel() {
     setError('');
     setStatus('');
     try {
-      const res = await fetch('/api/auth/create-student', {
+      const res = await fetch('/api/auth/request-registration', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${token}`
         },
-        body: JSON.stringify({ ...form })
+        body: JSON.stringify({
+          name: form.name,
+          email: form.email,
+          password: form.password,
+          confirmPassword: form.password,
+          requestedRole: 'student',
+          branch: form.department,
+          course: '',
+          program: isFaculty ? facultyProgram : form.department
+        })
       });
       const data = await res.json();
       if (data.success) {
-        setStatus('Student added successfully!');
-        setForm({ name: '', email: '', password: '', department: '' });
+        setStatus('Student registration request submitted!');
+        setForm({ name: '', email: '', password: '', department: facultyProgram });
       } else {
         setError(data.message || 'Failed to add student');
       }
@@ -50,7 +62,7 @@ function AddStudentPanel() {
         <input name="name" value={form.name} onChange={handleChange} placeholder="Name" className="border rounded px-2 py-1" required />
         <input name="email" value={form.email} onChange={handleChange} placeholder="Email" className="border rounded px-2 py-1" required />
         <input name="password" value={form.password} onChange={handleChange} placeholder="Password" type="password" className="border rounded px-2 py-1" required />
-        <input name="department" value={form.department} onChange={handleChange} placeholder="Department" className="border rounded px-2 py-1" required />
+        <input name="department" value={form.department} onChange={handleChange} placeholder="Department/Program" className="border rounded px-2 py-1" required readOnly={isFaculty} />
         <button type="submit" className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 disabled:opacity-50" disabled={loading}>{loading ? 'Adding...' : 'Add Student'}</button>
       </form>
       {status && <div className="text-green-700 text-sm mt-1">{status}</div>}

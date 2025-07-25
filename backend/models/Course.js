@@ -1,3 +1,4 @@
+// models/Course.js
 const mongoose = require('mongoose');
 
 const courseSchema = new mongoose.Schema({
@@ -10,9 +11,13 @@ const courseSchema = new mongoose.Schema({
     type: String,
     required: true,
     unique: true,
-    uppercase: true
+    uppercase: true,
+    trim: true
   },
-  description: String,
+  department: {
+    type: String,
+    required: true
+  },
   credits: {
     type: Number,
     required: true,
@@ -24,26 +29,35 @@ const courseSchema = new mongoose.Schema({
     ref: 'User',
     required: true
   },
-  schedule: [{
-    day: {
-      type: String,
-      enum: ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
-    },
-    time: String,
-    duration: Number,
-    room: String
-  }],
-  enrolledStudents: [{
+  students: [{
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User'
   }],
-  maxCapacity: {
-    type: Number,
-    default: 60
+  schedule: [{
+    day: String,
+    time: String,
+    room: String
+  }],
+  description: {
+    type: String,
+    default: ''
   },
-  isActive: {
-    type: Boolean,
-    default: true
+  semester: {
+    type: String,
+    enum: ['Even', 'Odd', '']
+  },
+  year: {
+    type: Number,
+    default: () => new Date().getFullYear()
+  },
+  maxStudents: {
+    type: Number,
+    default: 50
+  },
+  status: {
+    type: String,
+    enum: ['active', 'inactive'],
+    default: 'active'
   }
 }, {
   timestamps: true

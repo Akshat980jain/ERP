@@ -1,8 +1,8 @@
-import React, { useState } from 'react';
-import { BookOpen, Search, Calendar, Clock, AlertTriangle, CheckCircle, Plus, Filter } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { BookOpen, Search, Calendar, Clock, AlertTriangle, CheckCircle, Filter } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardContent } from '../ui/Card';
-import { Button } from '../ui/Button';
 import { Input } from '../ui/Input';
+import apiClient from '../../utils/api';
 
 interface Book {
   id: string;
@@ -32,104 +32,53 @@ export function LibraryModule() {
   const [searchQuery, setSearchQuery] = useState('');
   const [searchType, setSearchType] = useState('title');
   const [selectedCategory, setSelectedCategory] = useState('all');
+  const [books, setBooks] = useState<Book[]>([]);
+  const [issuedBooks, setIssuedBooks] = useState<BookIssue[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [categories, setCategories] = useState<string[]>(['all']);
 
-  const books: Book[] = [
-    {
-      id: '1',
-      isbn: '978-0262033848',
-      title: 'Introduction to Algorithms',
-      author: 'Thomas H. Cormen',
-      category: 'Computer Science',
-      availableCopies: 3,
-      totalCopies: 5,
-      publisher: 'MIT Press',
-      year: 2009
-    },
-    {
-      id: '2',
-      isbn: '978-0134685991',
-      title: 'Effective Java',
-      author: 'Joshua Bloch',
-      category: 'Programming',
-      availableCopies: 2,
-      totalCopies: 4,
-      publisher: 'Addison-Wesley',
-      year: 2017
-    },
-    {
-      id: '3',
-      isbn: '978-0321573513',
-      title: 'Algorithms',
-      author: 'Robert Sedgewick',
-      category: 'Computer Science',
-      availableCopies: 0,
-      totalCopies: 3,
-      publisher: 'Addison-Wesley',
-      year: 2011
-    },
-    {
-      id: '4',
-      isbn: '978-0596517748',
-      title: 'JavaScript: The Good Parts',
-      author: 'Douglas Crockford',
-      category: 'Web Development',
-      availableCopies: 4,
-      totalCopies: 6,
-      publisher: "O'Reilly Media",
-      year: 2008
-    },
-    {
-      id: '5',
-      isbn: '978-0134494166',
-      title: 'Clean Code',
-      author: 'Robert C. Martin',
-      category: 'Software Engineering',
-      availableCopies: 1,
-      totalCopies: 3,
-      publisher: 'Prentice Hall',
-      year: 2008
+  useEffect(() => {
+    async function fetchLibraryData() {
+      setLoading(true);
+      setError('');
+      try {
+        const booksRes: unknown = await apiClient.getBooks();
+        let fetchedBooks: Book[] = [];
+        if (booksRes && typeof booksRes === 'object' && 'books' in booksRes && Array.isArray((booksRes as { books?: unknown }).books)) {
+          fetchedBooks = (booksRes as { books: Book[] }).books;
+        } else if (Array.isArray(booksRes)) {
+          fetchedBooks = booksRes as Book[];
+        }
+        setBooks(fetchedBooks);
+        const cats = Array.from(new Set(fetchedBooks.map((b: Book) => b.category)));
+        setCategories(['all', ...cats]);
+
+        const issuesRes: unknown = await apiClient.getBookIssues();
+        let fetchedIssues: BookIssue[] = [];
+        if (issuesRes && typeof issuesRes === 'object' && 'issues' in issuesRes && Array.isArray((issuesRes as { issues?: unknown }).issues)) {
+          fetchedIssues = (issuesRes as { issues: BookIssue[] }).issues;
+        } else if (Array.isArray(issuesRes)) {
+          fetchedIssues = issuesRes as BookIssue[];
+        }
+        setIssuedBooks(fetchedIssues);
+      } catch {
+        setError('Failed to load library data. Please try again later.');
+        setBooks([]);
+        setIssuedBooks([]);
+        setCategories(['all']);
+      }
+      setLoading(false);
     }
-  ];
-
-  const issuedBooks: BookIssue[] = [
-    {
-      id: '1',
-      bookId: '1',
-      bookTitle: 'Introduction to Algorithms',
-      issueDate: '2024-01-10',
-      dueDate: '2024-01-24',
-      status: 'overdue',
-      fine: 50
-    },
-    {
-      id: '2',
-      bookId: '2',
-      bookTitle: 'Effective Java',
-      issueDate: '2024-01-15',
-      dueDate: '2024-01-29',
-      status: 'issued'
-    },
-    {
-      id: '3',
-      bookId: '4',
-      bookTitle: 'JavaScript: The Good Parts',
-      issueDate: '2023-12-20',
-      dueDate: '2024-01-03',
-      returnDate: '2024-01-02',
-      status: 'returned'
-    }
-  ];
-
-  const categories = ['all', 'Computer Science', 'Programming', 'Web Development', 'Software Engineering', 'Mathematics', 'Physics'];
+    fetchLibraryData();
+  }, []);
 
   const filteredBooks = books.filter(book => {
     const matchesSearch = searchQuery === '' || 
       (searchType === 'title' && book.title.toLowerCase().includes(searchQuery.toLowerCase())) ||
       (searchType === 'author' && book.author.toLowerCase().includes(searchQuery.toLowerCase())) ||
       (searchType === 'isbn' && book.isbn.includes(searchQuery));
-    
     const matchesCategory = selectedCategory === 'all' || book.category === selectedCategory;
-    
     return matchesSearch && matchesCategory;
   });
 
@@ -160,19 +109,10 @@ export function LibraryModule() {
     }
   };
 
-  const handleIssueBook = (bookId: string) => {
-    alert(`Book issue request submitted for book ID: ${bookId}`);
-  };
-
-  const handleReturnBook = (issueId: string) => {
-    alert(`Book return processed for issue ID: ${issueId}`);
-  };
-
   const tabs = [
     { id: 'search', label: 'Search Books' },
     { id: 'issued', label: 'My Books' },
     { id: 'history', label: 'History' },
-    { id: 'requests', label: 'Requests' },
   ];
 
   return (
@@ -227,7 +167,6 @@ export function LibraryModule() {
                     <option value="isbn">ISBN</option>
                   </select>
                 </div>
-
                 <div className="flex items-center space-x-2">
                   <Filter className="w-4 h-4 text-gray-500" />
                   <span className="text-sm text-gray-600">Category:</span>
@@ -247,47 +186,44 @@ export function LibraryModule() {
             </CardContent>
           </Card>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {filteredBooks.map((book) => (
-              <Card key={book.id}>
-                <CardContent>
-                  <div className="space-y-3">
-                    <div className="flex items-start justify-between">
-                      <BookOpen className="w-8 h-8 text-blue-600" />
-                      <span className={`px-2 py-1 text-xs rounded-full ${
-                        book.availableCopies > 0 
-                          ? 'bg-green-100 text-green-800' 
-                          : 'bg-red-100 text-red-800'
-                      }`}>
-                        {book.availableCopies > 0 ? 'Available' : 'Not Available'}
-                      </span>
+          {loading ? (
+            <div className="text-center py-8 text-gray-500">Loading books...</div>
+          ) : error ? (
+            <div className="text-center py-8 text-red-500">{error}</div>
+          ) : filteredBooks.length === 0 ? (
+            <div className="text-center py-8 text-gray-500">No books found.</div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {filteredBooks.map((book) => (
+                <Card key={book.id}>
+                  <CardContent>
+                    <div className="space-y-3">
+                      <div className="flex items-start justify-between">
+                        <BookOpen className="w-8 h-8 text-blue-600" />
+                        <span className={`px-2 py-1 text-xs rounded-full ${
+                          book.availableCopies > 0 
+                            ? 'bg-green-100 text-green-800' 
+                            : 'bg-red-100 text-red-800'
+                        }`}>
+                          {book.availableCopies > 0 ? 'Available' : 'Not Available'}
+                        </span>
+                      </div>
+                      <div>
+                        <h3 className="font-semibold text-gray-900 mb-1">{book.title}</h3>
+                        <p className="text-sm text-gray-600">by {book.author}</p>
+                      </div>
+                      <div className="space-y-1 text-xs text-gray-500">
+                        <p>ISBN: {book.isbn}</p>
+                        <p>Category: {book.category}</p>
+                        <p>Publisher: {book.publisher} ({book.year})</p>
+                        <p>Available: {book.availableCopies}/{book.totalCopies}</p>
+                      </div>
                     </div>
-                    
-                    <div>
-                      <h3 className="font-semibold text-gray-900 mb-1">{book.title}</h3>
-                      <p className="text-sm text-gray-600">by {book.author}</p>
-                    </div>
-
-                    <div className="space-y-1 text-xs text-gray-500">
-                      <p>ISBN: {book.isbn}</p>
-                      <p>Category: {book.category}</p>
-                      <p>Publisher: {book.publisher} ({book.year})</p>
-                      <p>Available: {book.availableCopies}/{book.totalCopies}</p>
-                    </div>
-
-                    <Button 
-                      onClick={() => handleIssueBook(book.id)}
-                      disabled={book.availableCopies === 0}
-                      className="w-full"
-                      size="sm"
-                    >
-                      {book.availableCopies > 0 ? 'Issue Book' : 'Not Available'}
-                    </Button>
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          )}
         </div>
       )}
 
@@ -298,39 +234,40 @@ export function LibraryModule() {
               <CardTitle>Currently Issued Books</CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="space-y-4">
-                {issuedBooks.filter(book => book.status === 'issued' || book.status === 'overdue').map((issue) => (
-                  <div key={issue.id} className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
-                    <div className="flex items-center space-x-4">
-                      {getStatusIcon(issue.status)}
-                      <div>
-                        <h4 className="font-medium text-gray-900">{issue.bookTitle}</h4>
-                        <div className="flex items-center space-x-2 text-sm text-gray-600">
-                          <Calendar className="w-4 h-4" />
-                          <span>Issued: {issue.issueDate}</span>
-                          <span>•</span>
-                          <span>Due: {issue.dueDate}</span>
+              {loading ? (
+                <div className="text-center py-8 text-gray-500">Loading issued books...</div>
+              ) : error ? (
+                <div className="text-center py-8 text-red-500">{error}</div>
+              ) : issuedBooks.filter(book => book.status === 'issued' || book.status === 'overdue').length === 0 ? (
+                <div className="text-center py-8 text-gray-500">No issued books.</div>
+              ) : (
+                <div className="space-y-4">
+                  {issuedBooks.filter(book => book.status === 'issued' || book.status === 'overdue').map((issue) => (
+                    <div key={issue.id} className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
+                      <div className="flex items-center space-x-4">
+                        {getStatusIcon(issue.status)}
+                        <div>
+                          <h4 className="font-medium text-gray-900">{issue.bookTitle}</h4>
+                          <div className="flex items-center space-x-2 text-sm text-gray-600">
+                            <Calendar className="w-4 h-4" />
+                            <span>Issued: {issue.issueDate}</span>
+                            <span>•</span>
+                            <span>Due: {issue.dueDate}</span>
+                          </div>
+                          {issue.fine && (
+                            <p className="text-sm text-red-600">Fine: ₹{issue.fine}</p>
+                          )}
                         </div>
-                        {issue.fine && (
-                          <p className="text-sm text-red-600">Fine: ₹{issue.fine}</p>
-                        )}
+                      </div>
+                      <div className="flex items-center space-x-3">
+                        <span className={getStatusBadge(issue.status)}>
+                          {issue.status.charAt(0).toUpperCase() + issue.status.slice(1)}
+                        </span>
                       </div>
                     </div>
-                    <div className="flex items-center space-x-3">
-                      <span className={getStatusBadge(issue.status)}>
-                        {issue.status.charAt(0).toUpperCase() + issue.status.slice(1)}
-                      </span>
-                      <Button 
-                        onClick={() => handleReturnBook(issue.id)}
-                        variant="outline" 
-                        size="sm"
-                      >
-                        Return Book
-                      </Button>
-                    </div>
-                  </div>
-                ))}
-              </div>
+                  ))}
+                </div>
+              )}
             </CardContent>
           </Card>
         </div>
@@ -342,87 +279,50 @@ export function LibraryModule() {
             <CardTitle>Book Issue History</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="overflow-x-auto">
-              <table className="min-w-full divide-y divide-gray-200">
-                <thead className="bg-gray-50">
-                  <tr>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Book Title</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Issue Date</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Due Date</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Return Date</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Fine</th>
-                  </tr>
-                </thead>
-                <tbody className="bg-white divide-y divide-gray-200">
-                  {issuedBooks.map((issue) => (
-                    <tr key={issue.id}>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                        {issue.bookTitle}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{issue.issueDate}</td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{issue.dueDate}</td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                        {issue.returnDate || '-'}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <span className={getStatusBadge(issue.status)}>
-                          {issue.status.charAt(0).toUpperCase() + issue.status.slice(1)}
-                        </span>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                        {issue.fine ? `₹${issue.fine}` : '-'}
-                      </td>
+            {loading ? (
+              <div className="text-center py-8 text-gray-500">Loading history...</div>
+            ) : error ? (
+              <div className="text-center py-8 text-red-500">{error}</div>
+            ) : issuedBooks.length === 0 ? (
+              <div className="text-center py-8 text-gray-500">No book issue history.</div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="min-w-full divide-y divide-gray-200">
+                  <thead className="bg-gray-50">
+                    <tr>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Book Title</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Issue Date</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Due Date</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Return Date</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Fine</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {activeTab === 'requests' && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Book Requests</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-4">
-              <div className="p-4 border-2 border-dashed border-gray-300 rounded-lg text-center">
-                <BookOpen className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-                <h3 className="text-lg font-medium text-gray-900 mb-2">Request a New Book</h3>
-                <p className="text-gray-600 mb-4">Can't find the book you're looking for? Request it here.</p>
-                <Button>
-                  <Plus className="w-4 h-4 mr-2" />
-                  Request Book
-                </Button>
+                  </thead>
+                  <tbody className="bg-white divide-y divide-gray-200">
+                    {issuedBooks.map((issue) => (
+                      <tr key={issue.id}>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                          {issue.bookTitle}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{issue.issueDate}</td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{issue.dueDate}</td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                          {issue.returnDate || '-'}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <span className={getStatusBadge(issue.status)}>
+                            {issue.status.charAt(0).toUpperCase() + issue.status.slice(1)}
+                          </span>
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                          {issue.fine ? `₹${issue.fine}` : '-'}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               </div>
-
-              <div className="space-y-3">
-                <h4 className="font-medium text-gray-900">Recent Requests</h4>
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                    <div>
-                      <p className="font-medium text-gray-900">Design Patterns: Elements of Reusable Object-Oriented Software</p>
-                      <p className="text-sm text-gray-600">Requested on: 2024-01-20</p>
-                    </div>
-                    <span className="px-2 py-1 text-xs font-semibold rounded-full bg-yellow-100 text-yellow-800">
-                      Pending
-                    </span>
-                  </div>
-                  <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                    <div>
-                      <p className="font-medium text-gray-900">System Design Interview</p>
-                      <p className="text-sm text-gray-600">Requested on: 2024-01-15</p>
-                    </div>
-                    <span className="px-2 py-1 text-xs font-semibold rounded-full bg-green-100 text-green-800">
-                      Approved
-                    </span>
-                  </div>
-                </div>
-              </div>
-            </div>
+            )}
           </CardContent>
         </Card>
       )}

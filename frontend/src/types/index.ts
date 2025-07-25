@@ -9,6 +9,7 @@ export interface User {
   department?: string;
   createdAt: string;
   adminPrograms?: string[];
+  program?: string;
 }
 
 export type UserRole = 'student' | 'faculty' | 'admin' | 'library' | 'placement';

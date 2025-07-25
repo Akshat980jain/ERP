@@ -10,6 +10,12 @@ interface Student {
   studentId: string;
 }
 
+interface Course {
+  _id: string;
+  name: string;
+  code: string;
+}
+
 interface AttendanceRecord {
   _id: string;
   student: Student;
@@ -20,16 +26,15 @@ interface AttendanceRecord {
 }
 
 export function AttendanceModule() {
-  const { user, token } = useAuth();
+  const { token } = useAuth();
   const [students, setStudents] = useState<Student[]>([]);
   const [attendance, setAttendance] = useState<{ [key: string]: 'present' | 'absent' }>({});
   const [selectedCourse, setSelectedCourse] = useState('');
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
-  const [courses, setCourses] = useState<any[]>([]);
+  const [courses, setCourses] = useState<Course[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
-  const [attendanceHistory, setAttendanceHistory] = useState<AttendanceRecord[]>([]);
 
   useEffect(() => {
     fetchCourses();
@@ -76,7 +81,7 @@ export function AttendanceModule() {
 
   const fetchExistingAttendance = async () => {
     try {
-      const res = await fetch(`/api/attendance?course=${selectedCourse}&date=${selectedDate}`, {
+      const res = await fetch(`/api/academic/attendance?courseId=${selectedCourse}&date=${selectedDate}`, {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       const data = await res.json();
@@ -89,22 +94,6 @@ export function AttendanceModule() {
       }
     } catch {
       console.log('No existing attendance found');
-    }
-  };
-
-  const fetchAttendanceHistory = async () => {
-    if (!selectedCourse) return;
-    
-    try {
-      const res = await fetch(`/api/attendance/history?course=${selectedCourse}`, {
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
-      const data = await res.json();
-      if (data.success) {
-        setAttendanceHistory(data.attendance);
-      }
-    } catch {
-      setError('Failed to fetch attendance history');
     }
   };
 
@@ -123,27 +112,37 @@ export function AttendanceModule() {
     setSuccess('');
 
     try {
+      // Submit each student's attendance as a separate request
       const attendanceData = Object.entries(attendance).map(([studentId, status]) => ({
-        student: studentId,
-        course: selectedCourse,
+        studentId,
+        courseId: selectedCourse,
         date: selectedDate,
         status
       }));
-
-      const res = await fetch('/api/attendance', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify({ attendance: attendanceData })
-      });
-
-      const data = await res.json();
-      if (data.success) {
+      // Use Promise.all to submit all attendance records
+      const results = await Promise.all(attendanceData.map(async (record) => {
+        const res = await fetch('/api/academic/attendance', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+          },
+          body: JSON.stringify(record)
+        });
+        const data = await res.json();
+        return { ...data, studentId: record.studentId };
+      }));
+      const failed = results.filter(r => !r.success);
+      if (failed.length === 0) {
         setSuccess('Attendance marked successfully!');
+      } else if (failed.every(r => r.message && r.message.includes('already marked'))) {
+        setSuccess('Attendance marked successfully! (Some were already marked)');
       } else {
-        setError(data.message || 'Failed to mark attendance');
+        const failedDetails = failed.map(r => {
+          const student = students.find(s => s._id === r.studentId);
+          return `${student?.name || r.studentId}: ${r.message || 'Failed'}`;
+        }).join('\n');
+        setError(`Some attendance records failed to save:\n${failedDetails}`);
       }
     } catch {
       setError('Failed to mark attendance');

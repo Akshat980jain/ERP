@@ -1,8 +1,9 @@
-import React, { useState } from 'react';
-import { Bell, CheckCircle, AlertTriangle, Info, X, Calendar, User, BookOpen, CreditCard, Briefcase } from 'lucide-react';
-import { Card, CardHeader, CardTitle, CardContent } from '../ui/Card';
+import React, { useState, useEffect } from 'react';
+import { Bell, CheckCircle, AlertTriangle, Info, X, Calendar, BookOpen, CreditCard, Briefcase } from 'lucide-react';
+import { Card, CardContent } from '../ui/Card';
 import { Button } from '../ui/Button';
 import { useAuth } from '../../contexts/AuthContext';
+import apiClient from '../../utils/api';
 
 interface Notification {
   id: string;
@@ -18,83 +19,31 @@ interface Notification {
 export function NotificationModule() {
   const { user } = useAuth();
   const [filter, setFilter] = useState<'all' | 'unread' | 'academic' | 'finance' | 'library' | 'placement'>('all');
+  const [notifications, setNotifications] = useState<Notification[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  const [notifications, setNotifications] = useState<Notification[]>([
-    {
-      id: '1',
-      title: 'Fee Payment Due',
-      message: 'Your semester fee payment is due on January 30, 2024. Please pay to avoid late fees.',
-      type: 'warning',
-      category: 'finance',
-      read: false,
-      createdAt: '2024-01-25T10:00:00Z',
-      targetRole: ['student']
-    },
-    {
-      id: '2',
-      title: 'New Assignment Posted',
-      message: 'Data Structures assignment has been posted. Due date: February 5, 2024.',
-      type: 'info',
-      category: 'academic',
-      read: false,
-      createdAt: '2024-01-24T14:30:00Z',
-      targetRole: ['student']
-    },
-    {
-      id: '3',
-      title: 'Library Book Overdue',
-      message: 'The book "Introduction to Algorithms" is overdue. Please return it to avoid fine.',
-      type: 'error',
-      category: 'library',
-      read: true,
-      createdAt: '2024-01-23T09:15:00Z',
-      targetRole: ['student']
-    },
-    {
-      id: '4',
-      title: 'Placement Drive Scheduled',
-      message: 'Microsoft campus placement drive scheduled for February 15, 2024. Register now!',
-      type: 'success',
-      category: 'placement',
-      read: false,
-      createdAt: '2024-01-22T16:45:00Z',
-      targetRole: ['student']
-    },
-    {
-      id: '5',
-      title: 'Attendance Alert',
-      message: 'Your attendance in Database Systems is below 75%. Please attend classes regularly.',
-      type: 'warning',
-      category: 'academic',
-      read: false,
-      createdAt: '2024-01-21T11:20:00Z',
-      targetRole: ['student']
-    },
-    {
-      id: '6',
-      title: 'Grade Submission Reminder',
-      message: 'Please submit grades for Data Structures course by January 28, 2024.',
-      type: 'warning',
-      category: 'academic',
-      read: false,
-      createdAt: '2024-01-25T08:00:00Z',
-      targetRole: ['faculty']
-    },
-    {
-      id: '7',
-      title: 'System Maintenance',
-      message: 'Scheduled system maintenance on January 27, 2024 from 2:00 AM to 4:00 AM.',
-      type: 'info',
-      category: 'general',
-      read: true,
-      createdAt: '2024-01-20T12:00:00Z',
-      targetRole: ['student', 'faculty', 'admin']
+  useEffect(() => {
+    async function fetchNotifications() {
+      setLoading(true);
+      try {
+        const res = await apiClient.getNotifications();
+        if (res && Array.isArray(res.notifications)) {
+          setNotifications(res.notifications);
+        } else if (res && Array.isArray(res)) {
+          setNotifications(res);
+        } else {
+          setNotifications([]);
+        }
+      } catch {
+        setNotifications([]);
+      }
+      setLoading(false);
     }
-  ]);
+    fetchNotifications();
+  }, []);
 
   const filteredNotifications = notifications.filter(notification => {
     if (!notification.targetRole?.includes(user?.role || '')) return false;
-    
     switch (filter) {
       case 'unread':
         return !notification.read;
@@ -114,16 +63,19 @@ export function NotificationModule() {
         notif.id === id ? { ...notif, read: true } : notif
       )
     );
+    // Optionally, call apiClient.markNotificationAsRead(id)
   };
 
   const markAllAsRead = () => {
     setNotifications(prev => 
       prev.map(notif => ({ ...notif, read: true }))
     );
+    // Optionally, call apiClient.markAllNotificationsAsRead()
   };
 
   const deleteNotification = (id: string) => {
     setNotifications(prev => prev.filter(notif => notif.id !== id));
+    // Optionally, call an API to delete notification
   };
 
   const getTypeIcon = (type: string) => {
@@ -174,10 +126,10 @@ export function NotificationModule() {
       </div>
 
       <div className="flex flex-wrap gap-2">
-        {['all', 'unread', 'academic', 'finance', 'library', 'placement'].map((filterType) => (
+        {(['all', 'unread', 'academic', 'finance', 'library', 'placement'] as const).map((filterType) => (
           <button
             key={filterType}
-            onClick={() => setFilter(filterType as any)}
+            onClick={() => setFilter(filterType)}
             className={`px-3 py-1 rounded-full text-sm font-medium transition-colors ${
               filter === filterType
                 ? 'bg-blue-600 text-white'
@@ -190,7 +142,14 @@ export function NotificationModule() {
       </div>
 
       <div className="space-y-4">
-        {filteredNotifications.length === 0 ? (
+        {loading ? (
+          <Card>
+            <CardContent className="text-center py-12">
+              <Bell className="w-12 h-12 text-gray-400 mx-auto mb-4 animate-spin" />
+              <h3 className="text-lg font-medium text-gray-900 mb-2">Loading notifications...</h3>
+            </CardContent>
+          </Card>
+        ) : filteredNotifications.length === 0 ? (
           <Card>
             <CardContent className="text-center py-12">
               <Bell className="w-12 h-12 text-gray-400 mx-auto mb-4" />

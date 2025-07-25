@@ -2,6 +2,7 @@ const express = require('express');
 const mongoose = require('mongoose');
 const dotenv = require('dotenv');
 const cors = require('cors');
+const coursesRouter = require('./routes/courses');
 
 // Load environment variables
 dotenv.config();
@@ -28,6 +29,18 @@ mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/your-app-
 // Mount the authentication routes
 app.use('/api/auth', require('./routes/auth'));
 // Mount other routers here as you create them (e.g., admin, academic, etc.)
+
+// Feature routes
+app.use('/api/courses', coursesRouter);
+app.use('/api/students', require('./routes/students'));
+app.use('/api/academic', require('./routes/academic'));
+app.use('/api/finance', require('./routes/finance'));
+app.use('/api/library', require('./routes/library'));
+app.use('/api/placement', require('./routes/placement'));
+app.use('/api/notifications', require('./routes/notifications'));
+app.use('/api/services', require('./routes/services'));
+// Reports, analytics, schedule, and settings would be handled in their respective routers if available
+// If not, they can be handled under /api/admin or /api/academic as appropriate
 
 
 // ========== SERVER START ==========

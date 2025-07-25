@@ -2,6 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { Users, UserPlus, Search, Mail, Book, GraduationCap } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
+import { Toast } from '../ui/Toast';
 
 interface Student {
   _id: string;
@@ -19,13 +20,17 @@ interface Student {
   averageGrade?: string;
 }
 
+interface Course {
+  _id: string;
+  name: string;
+  code: string;
+}
+
 export function StudentModule() {
   const { user, token } = useAuth();
   const [students, setStudents] = useState<Student[]>([]);
   const [filteredStudents, setFilteredStudents] = useState<Student[]>([]);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
-  const [success, setSuccess] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
   const [showAddForm, setShowAddForm] = useState(false);
   const [newStudent, setNewStudent] = useState({
@@ -36,45 +41,71 @@ export function StudentModule() {
     year: 1,
     password: ''
   });
+  const [courses, setCourses] = useState<Course[]>([]);
+  const [selectedCourse, setSelectedCourse] = useState('');
+  const [showToast, setShowToast] = useState(false);
+  const [toastType, setToastType] = useState<'success' | 'error' | 'info'>('success');
+  const [toastMessage, setToastMessage] = useState('');
 
   useEffect(() => {
     fetchStudents();
+    fetchCourses();
   }, []);
 
   useEffect(() => {
-    const filtered = students.filter(student =>
-      student.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      student.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      student.studentId.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      student.department.toLowerCase().includes(searchTerm.toLowerCase())
+    const safeStudents = Array.isArray(students) ? students : [];
+    const filtered = safeStudents.filter(student =>
+      student.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      student.email?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      student.studentId?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      student.department?.toLowerCase().includes(searchTerm.toLowerCase())
     );
     setFilteredStudents(filtered);
   }, [students, searchTerm]);
 
+  // Auto-dismiss toast after 2 seconds
+  useEffect(() => {
+    if (showToast) {
+      const timer = setTimeout(() => setShowToast(false), 2000);
+      return () => clearTimeout(timer);
+    }
+  }, [showToast]);
+
   const fetchStudents = async () => {
     setLoading(true);
-    setError('');
     try {
       const res = await fetch('/api/students', {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       const data = await res.json();
-      if (data.success) {
+      if (data.success && Array.isArray(data.students)) {
         setStudents(data.students);
       } else {
-        setError(data.message || 'Failed to fetch students');
+        setStudents([]);
       }
     } catch {
-      setError('Failed to fetch students');
+      setStudents([]);
     }
     setLoading(false);
+  };
+
+  const fetchCourses = async () => {
+    try {
+      const res = await fetch('/api/courses', {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      const data = await res.json();
+      if (data.success && Array.isArray(data.courses)) {
+        setCourses(data.courses);
+      }
+    } catch {
+      // ignore
+    }
   };
 
   const addStudent = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
-    setError('');
-    setSuccess('');
     
     try {
       const res = await fetch('/api/auth/create-student', {
@@ -87,15 +118,18 @@ export function StudentModule() {
       });
       const data = await res.json();
       if (data.success) {
-        setSuccess('Student added successfully!');
         setStudents([...students, data.student]);
         setNewStudent({ name: '', email: '', studentId: '', department: '', year: 1, password: '' });
         setShowAddForm(false);
       } else {
-        setError(data.message || 'Failed to add student');
+        setToastType('error');
+        setToastMessage(data.message || 'Failed to add student');
+        setShowToast(true);
       }
     } catch {
-      setError('Failed to add student');
+      setToastType('error');
+      setToastMessage('Failed to add student');
+      setShowToast(true);
     }
     setLoading(false);
   };
@@ -111,13 +145,70 @@ export function StudentModule() {
       const data = await res.json();
       if (data.success) {
         setStudents(students.filter(s => s._id !== studentId));
-        setSuccess('Student deleted successfully!');
+        setToastType('success');
+        setToastMessage('Student deleted successfully!');
+        setShowToast(true);
       } else {
-        setError(data.message || 'Failed to delete student');
+        setToastType('error');
+        setToastMessage(data.message || 'Failed to delete student');
+        setShowToast(true);
       }
     } catch {
-      setError('Failed to delete student');
+      setToastType('error');
+      setToastMessage('Failed to delete student');
+      setShowToast(true);
     }
+  };
+
+  const enrollStudent = async (studentId: string) => {
+    if (!selectedCourse) {
+      setToastType('error');
+      setToastMessage('Please select a course first.');
+      setShowToast(true);
+      return;
+    }
+    setLoading(true);
+    try {
+      const res = await fetch(`/api/courses/${selectedCourse}/enroll`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ studentId })
+      });
+      const data = await res.json();
+      if (data.success) {
+        setToastType('success');
+        setToastMessage('Student added to course successfully!');
+        setShowToast(true);
+        // Update the student's courses array in local state
+        setStudents(prev => prev.map(s =>
+          s._id === studentId && !s.courses.includes(selectedCourse)
+            ? { ...s, courses: [...s.courses, selectedCourse] }
+            : s
+        ));
+      } else {
+        setToastType('error');
+        setToastMessage(data.message || 'Failed to add student to course');
+        setShowToast(true);
+      }
+    } catch {
+      setToastType('error');
+      setToastMessage('Failed to add student to course');
+      setShowToast(true);
+    }
+    setLoading(false);
+  };
+
+  // Helper to check if student is enrolled in selected course
+  const isStudentEnrolled = (student: Student) => {
+    if (!selectedCourse) return false;
+    // Find the selected course in the courses array
+    const course = courses.find(c => c._id === selectedCourse);
+    if (!course) return false;
+    // If student.courses is an array of course IDs, check for selectedCourse
+    return Array.isArray(student.courses) && student.courses.includes(selectedCourse);
   };
 
   return (
@@ -134,9 +225,31 @@ export function StudentModule() {
           </button>
         )}
       </div>
+      {(user?.role === 'faculty' || user?.role === 'admin') && (
+        <div className="mb-4">
+          <label className="block text-sm font-medium text-gray-700 mb-2">Select Course to Add Students</label>
+          <select
+            value={selectedCourse}
+            onChange={e => setSelectedCourse(e.target.value)}
+            className="w-full md:w-1/2 border rounded px-3 py-2"
+          >
+            <option value="">Choose a course</option>
+            {courses.map(course => (
+              <option key={course._id} value={course._id}>
+                {course.name} ({course.code})
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
 
-      {error && <div className="text-red-700 bg-red-50 p-3 rounded">{error}</div>}
-      {success && <div className="text-green-700 bg-green-50 p-3 rounded">{success}</div>}
+      {showToast && (
+        <Toast
+          message={toastMessage}
+          type={toastType}
+          onClose={() => setShowToast(false)}
+        />
+      )}
 
       {showAddForm && (
         <div className="bg-white p-6 rounded-lg shadow border">
@@ -276,6 +389,19 @@ export function StudentModule() {
                       <div className="text-sm font-medium">Courses</div>
                       <div className="text-lg font-bold text-purple-600">{student.courses?.length || 0}</div>
                     </div>
+                   {(user?.role === 'faculty' || user?.role === 'admin') && (
+                     isStudentEnrolled(student) ? (
+                       <span className="ml-2 px-3 py-1 rounded bg-green-100 text-green-700 border border-green-300 text-xs font-semibold">Already Enrolled</span>
+                     ) : (
+                       <button
+                         onClick={() => enrollStudent(student._id)}
+                         className="bg-blue-500 text-white px-3 py-1 rounded hover:bg-blue-700 ml-2"
+                         disabled={loading || !selectedCourse}
+                       >
+                         Add
+                       </button>
+                     )
+                    )}
                     {user?.role === 'admin' && (
                       <button
                         onClick={() => deleteStudent(student._id)}
