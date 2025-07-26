@@ -239,11 +239,11 @@ export function AcademicModule() {
 
   // Enhanced tabs
   const tabs = [
-    { id: 'dashboard', label: 'Dashboard', icon: BarChart3 },
+    // { id: 'dashboard', label: 'Dashboard', icon: BarChart3 },
     { id: 'attendance', label: 'Attendance', icon: Clock },
     { id: 'marks', label: 'Marks & Grades', icon: Award },
     { id: 'schedule', label: 'Timetable', icon: Calendar },
-    { id: 'courses', label: 'My Courses', icon: BookOpen },
+    // { id: 'courses', label: 'My Courses', icon: BookOpen },
   ];
 
   const weekDays = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
@@ -454,7 +454,7 @@ export function AcademicModule() {
                             record.status === 'warning' ? 'text-yellow-600' : 'text-red-600'
                           }`}>
                             {record.percentage.toFixed(1)}%
-                          </span>
+                            </span>
                         </div>
                         <div className="flex justify-between text-sm">
                           <span className="text-gray-600">Classes:</span>
@@ -477,7 +477,7 @@ export function AcademicModule() {
                       </div>
                     </div>
                   ))}
-                </div>
+              </div>
               )}
             </CardContent>
           </Card>
@@ -505,19 +505,19 @@ export function AcademicModule() {
               {filteredMarks.length === 0 ? (
                 <div className="text-center py-8 text-gray-500">No marks data available.</div>
               ) : (
-                <div className="overflow-x-auto">
-                  <table className="min-w-full divide-y divide-gray-200">
-                    <thead className="bg-gray-50">
-                      <tr>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Course</th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Assessment</th>
+              <div className="overflow-x-auto">
+                <table className="min-w-full divide-y divide-gray-200">
+                  <thead className="bg-gray-50">
+                    <tr>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Course</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Assessment</th>
                         <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Marks</th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Percentage</th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Grade</th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Date</th>
-                      </tr>
-                    </thead>
-                    <tbody className="bg-white divide-y divide-gray-200">
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Percentage</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Grade</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Date</th>
+                    </tr>
+                  </thead>
+                  <tbody className="bg-white divide-y divide-gray-200">
                       {filteredMarks.map((mark, index) => (
                         <tr key={mark.id || index} className="hover:bg-gray-50">
                           <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
@@ -543,9 +543,9 @@ export function AcademicModule() {
                           </td>
                         </tr>
                       ))}
-                    </tbody>
-                  </table>
-                </div>
+                  </tbody>
+                </table>
+              </div>
               )}
             </CardContent>
           </Card>
@@ -566,20 +566,20 @@ export function AcademicModule() {
                 <p className="text-sm text-gray-400 mt-2">Contact admin to update your schedule.</p>
               </div>
             ) : (
-              <div className="overflow-x-auto">
+            <div className="overflow-x-auto">
                 <table className="min-w-full border border-gray-200">
-                  <thead className="bg-gray-50">
-                    <tr>
+                <thead className="bg-gray-50">
+                  <tr>
                       <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase border-r">Time</th>
                       {weekDays.map(day => (
                         <th key={day} className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase border-r">
                           {day}
                         </th>
                       ))}
-                    </tr>
-                  </thead>
-                  <tbody className="bg-white divide-y divide-gray-200">
-                    {schedule.map((slot, index) => (
+                  </tr>
+                </thead>
+                <tbody className="bg-white divide-y divide-gray-200">
+                  {schedule.map((slot, index) => (
                       <tr key={slot.id || index} className="hover:bg-gray-50">
                         <td className="px-4 py-4 text-sm font-medium text-gray-900 border-r bg-gray-50">
                           {slot.time}
@@ -609,11 +609,11 @@ export function AcademicModule() {
                             </td>
                           );
                         })}
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
             )}
           </CardContent>
         </Card>

@@ -30,17 +30,18 @@ export function Header({ onNotificationClick, unreadCount }: HeaderProps) {
             />
           </div>
 
+          {/* Notification button only if unreadCount is available and > 0 */}
+          {typeof unreadCount === 'number' && unreadCount > 0 && (
           <button 
             onClick={onNotificationClick}
             className="relative p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
           >
             <Bell className="w-5 h-5" />
-            {unreadCount > 0 && (
               <span className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 text-white text-xs rounded-full flex items-center justify-center">
                 {unreadCount > 9 ? '9+' : unreadCount}
               </span>
+            </button>
             )}
-          </button>
 
           <div className="flex items-center space-x-3">
             <div className="w-8 h-8 bg-gray-300 rounded-full flex items-center justify-center">

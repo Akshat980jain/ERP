@@ -74,11 +74,11 @@ export function StudentServices() {
       </div>
 
       {activeTab === 'apply' && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Available Services</CardTitle>
-          </CardHeader>
-          <CardContent>
+          <Card>
+            <CardHeader>
+              <CardTitle>Available Services</CardTitle>
+            </CardHeader>
+            <CardContent>
             {loading ? (
               <div className="text-center py-8 text-gray-500">Loading services...</div>
             ) : error ? (
@@ -103,8 +103,8 @@ export function StudentServices() {
                 ))}
               </div>
             )}
-          </CardContent>
-        </Card>
+              </CardContent>
+            </Card>
       )}
 
       {activeTab === 'status' && (
@@ -120,13 +120,13 @@ export function StudentServices() {
             ) : services.length === 0 ? (
               <div className="text-center py-8 text-gray-500">No applications found.</div>
             ) : (
-              <div className="space-y-4">
+            <div className="space-y-4">
                 {services.map((app) => (
-                  <div key={app.id} className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
-                    <div className="flex items-center space-x-4">
+                <div key={app.id} className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
+                  <div className="flex items-center space-x-4">
                       {app.status === 'approved' ? <CheckCircle className="w-5 h-5 text-green-500" /> : app.status === 'pending' ? <Clock className="w-5 h-5 text-yellow-500" /> : <XCircle className="w-5 h-5 text-red-500" />}
-                      <div>
-                        <h4 className="font-medium text-gray-900">{app.type}</h4>
+                    <div>
+                      <h4 className="font-medium text-gray-900">{app.type}</h4>
                         <p className="text-sm text-gray-600">Applied on: {app.requestDate}</p>
                         {app.approvedDate && <p className="text-sm text-gray-600">Approved on: {app.approvedDate}</p>}
                         {app.remarks && <p className="text-sm text-gray-600">Remarks: {app.remarks}</p>}
@@ -139,9 +139,9 @@ export function StudentServices() {
                     }`}>
                       {app.status.charAt(0).toUpperCase() + app.status.slice(1)}
                     </span>
-                  </div>
-                ))}
-              </div>
+                </div>
+              ))}
+            </div>
             )}
           </CardContent>
         </Card>
@@ -160,32 +160,32 @@ export function StudentServices() {
             ) : downloads.length === 0 ? (
               <div className="text-center py-8 text-gray-500">No downloads found.</div>
             ) : (
-              <div className="space-y-4">
-                {downloads.map((file, index) => (
-                  <div key={index} className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
-                    <div className="flex items-center space-x-4">
-                      <FileText className="w-8 h-8 text-blue-600" />
-                      <div>
-                        <h4 className="font-medium text-gray-900">{file.name}</h4>
-                        <div className="flex items-center space-x-4 text-sm text-gray-600">
-                          <span>{file.type}</span>
-                          <span>•</span>
-                          <span>{file.size}</span>
-                          <span>•</span>
-                          <span className="flex items-center">
-                            <Calendar className="w-4 h-4 mr-1" />
-                            {file.date}
-                          </span>
-                        </div>
+            <div className="space-y-4">
+              {downloads.map((file, index) => (
+                <div key={index} className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
+                  <div className="flex items-center space-x-4">
+                    <FileText className="w-8 h-8 text-blue-600" />
+                    <div>
+                      <h4 className="font-medium text-gray-900">{file.name}</h4>
+                      <div className="flex items-center space-x-4 text-sm text-gray-600">
+                        <span>{file.type}</span>
+                        <span>•</span>
+                        <span>{file.size}</span>
+                        <span>•</span>
+                        <span className="flex items-center">
+                          <Calendar className="w-4 h-4 mr-1" />
+                          {file.date}
+                        </span>
                       </div>
                     </div>
-                    <Button variant="outline" size="sm">
-                      <Download className="w-4 h-4 mr-2" />
-                      Download
-                    </Button>
                   </div>
-                ))}
-              </div>
+                  <Button variant="outline" size="sm">
+                    <Download className="w-4 h-4 mr-2" />
+                    Download
+                  </Button>
+                </div>
+              ))}
+            </div>
             )}
           </CardContent>
         </Card>

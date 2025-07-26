@@ -253,7 +253,7 @@ export function StudentDashboard() {
           ) : (
             <ul className="divide-y divide-gray-200">
               {courses.map((course) => (
-                <li key={course.id} className="py-2 flex flex-col md:flex-row md:items-center md:justify-between">
+                <li key={course.id || course.code} className="py-2 flex flex-col md:flex-row md:items-center md:justify-between">
                   <span className="font-medium text-gray-900">{course.name}</span>
                   <span className="text-sm text-gray-600">{course.code}</span>
                   <span className="text-sm text-gray-600">Credits: {course.credits}</span>
