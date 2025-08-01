@@ -24,6 +24,10 @@ const userSchema = new mongoose.Schema({
     type: String,
     // This logic is now handled in the route/service layer
   },
+  department: {
+    type: String,
+    // For storing department information like "B.Tech - CS"
+  },
   courses: [{
     type: String,
     trim: true
@@ -53,7 +57,13 @@ const userSchema = new mongoose.Schema({
   },
   profile: {
     course: String,
-    branch: String
+    branch: String,
+    phone: String,
+    address: String,
+    studentId: String,
+    employeeId: String,
+    semester: String,
+    section: String
   },
   adminPrograms: [{
     type: String,

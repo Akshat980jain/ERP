@@ -16,9 +16,6 @@ import {
   BarChart3,
   UserCheck,
   ChevronRight,
-  Search,
-  Pin,
-  PinOff,
   Moon,
   Sun,
   Maximize2,
@@ -50,12 +47,9 @@ interface MenuItem {
   badgeType?: 'default' | 'success' | 'warning' | 'error' | 'info';
   isNew?: boolean;
   children?: MenuItem[];
-  isPinned?: boolean;
-  lastAccessed?: Date;
   accessCount?: number;
   category?: string;
   description?: string;
-  shortcut?: string;
   isHidden?: boolean;
   permissions?: string[];
   color?: string;
@@ -75,29 +69,19 @@ export function Sidebar({
   const { user, logout } = useAuth();
   
   // Enhanced state management
-  const [searchTerm, setSearchTerm] = useState('');
-  const [pinnedItems, setPinnedItems] = useState<string[]>([]);
-  const [recentItems, setRecentItems] = useState<string[]>([]);
   const [expandedCategories, setExpandedCategories] = useState<string[]>(['main']);
   const [isOnline, setIsOnline] = useState(navigator.onLine);
   const [showQuickActions, setShowQuickActions] = useState(false);
-  const [accessStats, setAccessStats] = useState<Record<string, { count: number; lastAccessed: Date }>>({});
+  const [accessStats, setAccessStats] = useState<Record<string, { count: number }>>({});
   const [hoveredItem, setHoveredItem] = useState<string | null>(null);
   const [animateItems, setAnimateItems] = useState(false);
   const [showContextMenu, setShowContextMenu] = useState<string | null>(null);
-  const [commandPalette, setCommandPalette] = useState(false);
-  
-  const searchInputRef = useRef<HTMLInputElement>(null);
 
   // Load saved preferences from localStorage
   useEffect(() => {
-    const savedPinned = localStorage.getItem('sidebar-pinned');
-    const savedRecent = localStorage.getItem('sidebar-recent');
     const savedExpanded = localStorage.getItem('sidebar-expanded');
     const savedAccessStats = localStorage.getItem('sidebar-access-stats');
     
-    if (savedPinned) setPinnedItems(JSON.parse(savedPinned));
-    if (savedRecent) setRecentItems(JSON.parse(savedRecent));
     if (savedExpanded) setExpandedCategories(JSON.parse(savedExpanded));
     if (savedAccessStats) setAccessStats(JSON.parse(savedAccessStats));
   }, []);
@@ -125,7 +109,6 @@ export function Sidebar({
         icon: Home, 
         category: 'main',
         description: 'Overview and analytics',
-        shortcut: '⌘D',
         color: 'blue',
         gradient: true,
         priority: 'high'
@@ -136,7 +119,6 @@ export function Sidebar({
         icon: Bell,
         category: 'main',
         description: 'Stay updated with alerts',
-        shortcut: '⌘N',
         color: 'orange'
       },
     ];
@@ -151,7 +133,6 @@ export function Sidebar({
               icon: GraduationCap,
               category: 'academics',
               description: 'Courses, grades & progress',
-              shortcut: '⌘A',
               color: 'purple',
               gradient: true,
               priority: 'high',
@@ -314,7 +295,6 @@ export function Sidebar({
       icon: Settings,
       category: 'system',
       description: 'Account & preferences',
-      shortcut: '⌘P',
       color: 'gray'
     };
 
@@ -325,23 +305,14 @@ export function Sidebar({
     const items = getMenuItems();
     return items.map(item => ({
       ...item,
-      isPinned: pinnedItems.includes(item.id),
-      lastAccessed: accessStats[item.id]?.lastAccessed,
       accessCount: accessStats[item.id]?.count || 0
     }));
-  }, [pinnedItems, accessStats]);
+  }, [accessStats]);
 
-  // Advanced filtering with fuzzy search
+  // Enhanced filtering - now just returns all menu items
   const filteredMenuItems = useMemo(() => {
-    if (!searchTerm) return menuItems;
-    
-    const searchLower = searchTerm.toLowerCase();
-    return menuItems.filter(item => 
-      item.label.toLowerCase().includes(searchLower) ||
-      item.description?.toLowerCase().includes(searchLower) ||
-      item.category?.toLowerCase().includes(searchLower)
-    );
-  }, [menuItems, searchTerm]);
+    return menuItems;
+  }, [menuItems]);
 
   // Group items by category with enhanced sorting
   const groupedMenuItems = useMemo(() => {
@@ -362,8 +333,6 @@ export function Sidebar({
         const bPriority = priorityOrder[b.priority || 'low'];
         
         if (aPriority !== bPriority) return bPriority - aPriority;
-        if (a.isPinned && !b.isPinned) return -1;
-        if (!a.isPinned && b.isPinned) return 1;
         if ((a.accessCount || 0) !== (b.accessCount || 0)) {
           return (b.accessCount || 0) - (a.accessCount || 0);
         }
@@ -379,33 +348,17 @@ export function Sidebar({
     const newStats = {
       ...accessStats,
       [tabId]: {
-        count: (accessStats[tabId]?.count || 0) + 1,
-        lastAccessed: new Date()
+        count: (accessStats[tabId]?.count || 0) + 1
       }
     };
     setAccessStats(newStats);
     localStorage.setItem('sidebar-access-stats', JSON.stringify(newStats));
-
-    const newRecent = [tabId, ...recentItems.filter(id => id !== tabId)].slice(0, 5);
-    setRecentItems(newRecent);
-    localStorage.setItem('sidebar-recent', JSON.stringify(newRecent));
 
     // Animate item selection
     setAnimateItems(true);
     setTimeout(() => setAnimateItems(false), 300);
 
     onTabChange(tabId);
-  };
-
-  // Enhanced pin functionality
-  const togglePin = (itemId: string, event: React.MouseEvent) => {
-    event.stopPropagation();
-    const newPinned = pinnedItems.includes(itemId)
-      ? pinnedItems.filter(id => id !== itemId)
-      : [...pinnedItems, itemId];
-    
-    setPinnedItems(newPinned);
-    localStorage.setItem('sidebar-pinned', JSON.stringify(newPinned));
   };
 
   // Get color classes for items
@@ -475,8 +428,7 @@ export function Sidebar({
             {
               'shadow-lg scale-[1.02]': isActive,
               'ml-4': level > 0,
-              'animate-pulse': animateItems && isActive,
-              'border-2 border-yellow-300': item.isPinned && !isActive
+              'animate-pulse': animateItems && isActive
             }
           )}
         >
@@ -545,18 +497,6 @@ export function Sidebar({
                     </span>
                   )}
 
-                  {/* Pin indicator */}
-                  {item.isPinned && (
-                    <Pin className="w-3 h-3 text-yellow-500" />
-                  )}
-                  
-                  {/* Keyboard shortcut */}
-                  {item.shortcut && isHovered && (
-                    <span className="text-xs bg-black bg-opacity-20 text-white px-2 py-1 rounded">
-                      {item.shortcut}
-                    </span>
-                  )}
-
                   {/* Expand indicator */}
                   {hasChildren && (
                     <div className={clsx('transition-transform duration-200', {
@@ -569,21 +509,6 @@ export function Sidebar({
               </>
             )}
           </div>
-
-          {/* Hover actions */}
-          {!collapsed && isHovered && (
-            <div className="absolute right-2 top-2 opacity-0 group-hover:opacity-100 transition-opacity">
-              <div className="flex items-center space-x-1">
-                <button
-                  onClick={(e) => togglePin(item.id, e)}
-                  className="p-1 hover:bg-white hover:bg-opacity-20 rounded"
-                  title={item.isPinned ? 'Unpin' : 'Pin'}
-                >
-                  {item.isPinned ? <PinOff className="w-3 h-3" /> : <Pin className="w-3 h-3" />}
-                </button>
-              </div>
-            </div>
-          )}
         </button>
 
         {/* Children */}
@@ -597,17 +522,6 @@ export function Sidebar({
         {showContextMenu === item.id && (
           <div className="absolute right-0 top-full mt-1 w-48 bg-white rounded-lg shadow-xl border z-50">
             <div className="py-1">
-              <button 
-                onClick={(e) => {
-                  e.stopPropagation();
-                  togglePin(item.id, e);
-                  setShowContextMenu(null);
-                }}
-                className="w-full px-4 py-2 text-sm text-left hover:bg-gray-50 flex items-center space-x-2"
-              >
-                <Pin className="w-4 h-4" />
-                <span>{item.isPinned ? 'Unpin' : 'Pin to sidebar'}</span>
-              </button>
               <button className="w-full px-4 py-2 text-sm text-left hover:bg-gray-50 flex items-center space-x-2">
                 <span>Add to bookmarks</span>
               </button>
@@ -631,12 +545,7 @@ export function Sidebar({
   // Keyboard shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
-        e.preventDefault();
-        setCommandPalette(true);
-      }
       if (e.key === 'Escape') {
-        setCommandPalette(false);
         setShowContextMenu(null);
       }
     };
@@ -671,9 +580,9 @@ export function Sidebar({
 
   return (
     <>
-      {/* FIXED: Changed from fixed positioning to relative positioning with flex-shrink-0 */}
+      {/* Updated: Removed fixed positioning, now handled by parent container */}
       <div className={clsx(
-        'h-screen bg-white border-r border-gray-200 flex flex-col transition-all duration-300 shadow-xl flex-shrink-0',
+        'h-full bg-white border-r border-gray-200 flex flex-col transition-all duration-300 shadow-xl',
         'backdrop-blur-sm bg-white/95',
         {
           'w-80': !collapsed,
@@ -725,50 +634,10 @@ export function Sidebar({
           </div>
         </div>
 
-        {/* Enhanced Search and Controls - Fixed height */}
-        {!collapsed && (
-          <div className="flex-shrink-0 p-4 border-b border-gray-100 bg-gray-50">
-            <div className="relative">
-              <Search className="w-4 h-4 absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
-              <input
-                ref={searchInputRef}
-                type="text"
-                placeholder="Search or press ⌘K..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full pl-10 pr-10 py-3 text-sm border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white shadow-sm"
-              />
-              {searchTerm && (
-                <button
-                  onClick={() => setSearchTerm('')}
-                  className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
-                  aria-label="Clear search"
-                >
-                  ×
-                </button>
-              )}
-            </div>
-          </div>
-        )}
+
 
         {/* Enhanced Navigation - Flexible height with proper scrolling */}
         <nav className="flex-1 p-4 space-y-3 overflow-y-auto custom-scrollbar min-h-0">
-          {/* Recent Items */}
-          {!collapsed && recentItems.length > 0 && !searchTerm && (
-            <div className="mb-6">
-              <div className="flex items-center space-x-2 px-2 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wider">
-                <span>Recently Used</span>
-              </div>
-              <div className="space-y-2 mt-3">
-                {recentItems.slice(0, 3).map(itemId => {
-                  const item = menuItems.find(m => m.id === itemId);
-                  if (!item) return null;
-                  return renderMenuItem(item);
-                })}
-              </div>
-            </div>
-          )}
-
           {/* Grouped Menu Items */}
           {Object.entries(groupedMenuItems).map(([category, items]) => {
             const isExpanded = expandedCategories.includes(category);
@@ -864,51 +733,7 @@ export function Sidebar({
         </div>
       </div>
 
-      {/* Command Palette */}
-      {commandPalette && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-start justify-center pt-20">
-          <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl mx-4">
-            <div className="p-4 border-b border-gray-200">
-              <div className="relative">
-                <Search className="w-5 h-5 absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
-                <input
-                  type="text"
-                  placeholder="Search for commands, pages, or actions..."
-                  className="w-full pl-10 pr-4 py-3 text-lg border-0 focus:ring-0 focus:outline-none"
-                  autoFocus
-                />
-              </div>
-            </div>
-            <div className="max-h-96 overflow-y-auto">
-              <div className="p-2">
-                {menuItems.slice(0, 8).map(item => (
-                  <button
-                    key={item.id}
-                    onClick={() => {
-                      handleTabChange(item.id);
-                      setCommandPalette(false);
-                    }}
-                    className="w-full flex items-center space-x-3 p-3 hover:bg-gray-50 rounded-lg transition-colors"
-                  >
-                    <item.icon className="w-5 h-5 text-gray-400" />
-                    <div className="text-left">
-                      <div className="font-medium text-gray-900">{item.label}</div>
-                      <div className="text-sm text-gray-500">{item.description}</div>
-                    </div>
-                    {item.shortcut && (
-                      <div className="ml-auto">
-                        <span className="text-xs bg-gray-100 text-gray-600 px-2 py-1 rounded">
-                          {item.shortcut}
-                        </span>
-                      </div>
-                    )}
-                  </button>
-                ))}
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* Removed command palette */}
 
       {/* Custom Styles */}
       <style>{`

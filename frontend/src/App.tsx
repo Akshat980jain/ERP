@@ -25,10 +25,15 @@ import { StudentServices } from './components/modules/StudentServices';
 function AppContent() {
   const { user, isLoading } = useAuth();
   const [activeTab, setActiveTab] = useState('dashboard');
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const unreadNotificationCount = 5;
   
   const handleNotificationClick = () => {
     setActiveTab('notifications');
+  };
+
+  const handleSidebarCollapse = (collapsed: boolean) => {
+    setSidebarCollapsed(collapsed);
   };
 
   if (isLoading) {
@@ -48,13 +53,23 @@ function AppContent() {
       <Route path="/*" element={
         !user ? <LoginForm /> : (
           <div className="min-h-screen bg-gray-100 flex">
-            <Sidebar activeTab={activeTab} onTabChange={setActiveTab} />
-            <div className="flex-1 flex flex-col">
+            {/* Fixed Sidebar */}
+            <div className="fixed left-0 top-0 h-full z-30">
+              <Sidebar 
+                activeTab={activeTab} 
+                onTabChange={setActiveTab} 
+                collapsed={sidebarCollapsed}
+                onCollapseChange={handleSidebarCollapse}
+              />
+            </div>
+            
+            {/* Main Content Area with dynamic left margin */}
+            <div className={`flex-1 flex flex-col transition-all duration-300 ${sidebarCollapsed ? 'ml-20' : 'ml-80'}`}>
               <Header 
                 onNotificationClick={handleNotificationClick}
                 unreadCount={unreadNotificationCount}
               />
-              <main className="flex-1 p-6">
+              <main className="flex-1 p-6 overflow-y-auto">
                 {(() => {
                   switch (activeTab) {
                     case 'dashboard':

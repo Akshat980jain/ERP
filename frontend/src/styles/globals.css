@@ -1,5 +1,11 @@
 /* src/styles/globals.css or wherever your main CSS file is */
 
+/* Ensure proper scrolling behavior */
+html, body {
+  height: 100%;
+  overflow-x: hidden;
+}
+
 /* Dark mode styles */
 .dark {
     color-scheme: dark;

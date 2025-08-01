@@ -183,25 +183,21 @@ function FacultyApprovalPanel() {
 }
 
 export function FacultyDashboard() {
-  // Sample data for faculty dashboard
+  // Initialize with empty data
   const attendanceData = [
-    { name: 'Present', value: 92, color: '#10B981' },
-    { name: 'Absent', value: 8, color: '#EF4444' },
+    { name: 'Present', value: 0, color: '#10B981' },
+    { name: 'Absent', value: 0, color: '#EF4444' },
   ];
 
   const marksData = [
-    { subject: 'Mathematics', marks: 88 },
-    { subject: 'Physics', marks: 91 },
-    { subject: 'Chemistry', marks: 85 },
-    { subject: 'Computer Science', marks: 94 },
-    { subject: 'English', marks: 89 },
+    { subject: 'No Data', marks: 0 },
   ];
 
   const quickStats = [
-    { title: 'Overall Attendance', value: '92%', icon: CheckCircle, color: 'text-green-600' },
-    { title: 'Average Marks', value: '89%', icon: Shield, color: 'text-blue-600' },
-    { title: 'Pending Requests', value: '3', icon: CheckCircle, color: 'text-orange-600' },
-    { title: 'Classes Taught', value: '5', icon: Shield, color: 'text-purple-600' },
+    { title: 'Overall Attendance', value: 'N/A', icon: CheckCircle, color: 'text-green-600' },
+    { title: 'Average Marks', value: 'N/A', icon: Shield, color: 'text-blue-600' },
+    { title: 'Pending Requests', value: '0', icon: CheckCircle, color: 'text-orange-600' },
+    { title: 'Classes Taught', value: '0', icon: Shield, color: 'text-purple-600' },
   ];
 
   return (
@@ -225,29 +221,39 @@ export function FacultyDashboard() {
         <div className="bg-white rounded-lg shadow p-4">
           <h3 className="text-lg font-semibold mb-2">Attendance Overview</h3>
           <div className="h-64">
-            {/* Replace with a chart library if available */}
-            <ul className="space-y-2">
-              {attendanceData.map((entry, index) => (
-                <li key={index} className="flex items-center">
-                  <span className="inline-block w-3 h-3 rounded-full mr-2" style={{ backgroundColor: entry.color }} />
-                  <span className="text-gray-700">{entry.name}: {entry.value}%</span>
-                </li>
-              ))}
-            </ul>
+            {attendanceData[0].value === 0 ? (
+              <div className="flex items-center justify-center h-full text-gray-500">
+                No attendance data available
+              </div>
+            ) : (
+              <ul className="space-y-2">
+                {attendanceData.map((entry, index) => (
+                  <li key={index} className="flex items-center">
+                    <span className="inline-block w-3 h-3 rounded-full mr-2" style={{ backgroundColor: entry.color }} />
+                    <span className="text-gray-700">{entry.name}: {entry.value}%</span>
+                  </li>
+                ))}
+              </ul>
+            )}
           </div>
         </div>
         <div className="bg-white rounded-lg shadow p-4">
           <h3 className="text-lg font-semibold mb-2">Recent Marks</h3>
           <div className="h-64">
-            {/* Replace with a chart library if available */}
-            <ul className="space-y-2">
-              {marksData.map((entry, index) => (
-                <li key={index} className="flex items-center justify-between">
-                  <span className="text-gray-700">{entry.subject}</span>
-                  <span className="font-semibold text-blue-600">{entry.marks}</span>
-                </li>
-              ))}
-            </ul>
+            {marksData[0].marks === 0 ? (
+              <div className="flex items-center justify-center h-full text-gray-500">
+                No marks data available
+              </div>
+            ) : (
+              <ul className="space-y-2">
+                {marksData.map((entry, index) => (
+                  <li key={index} className="flex items-center justify-between">
+                    <span className="text-gray-700">{entry.subject}</span>
+                    <span className="font-semibold text-blue-600">{entry.marks}</span>
+                  </li>
+                ))}
+              </ul>
+            )}
           </div>
         </div>
       </div>

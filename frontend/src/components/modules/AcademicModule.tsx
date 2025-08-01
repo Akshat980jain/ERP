@@ -6,16 +6,11 @@ import {
   Award, 
   Clock, 
   Search,
-  Filter,
   Download,
-  Eye,
-  BarChart3,
   AlertTriangle,
   CheckCircle,
   XCircle,
   RefreshCw,
-  User,
-  MapPin,
   Bell
 } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardContent } from '../ui/Card';
@@ -51,21 +46,6 @@ interface Mark {
   weightage?: number;
 }
 
-interface ScheduleSlot {
-  id: string;
-  time: string;
-  monday?: string;
-  tuesday?: string;
-  wednesday?: string;
-  thursday?: string;
-  friday?: string;
-  saturday?: string;
-  courseId?: string;
-  faculty?: string;
-  room?: string;
-  type?: 'lecture' | 'lab' | 'tutorial';
-}
-
 interface AttendanceRecord {
   courseId: string;
   courseName: string;
@@ -93,7 +73,6 @@ export function AcademicModule() {
   const [activeTab, setActiveTab] = useState('dashboard');
   const [courses, setCourses] = useState<Course[]>([]);
   const [marks, setMarks] = useState<Mark[]>([]);
-  const [schedule, setSchedule] = useState<ScheduleSlot[]>([]);
   const [attendanceRecords, setAttendanceRecords] = useState<AttendanceRecord[]>([]);
   const [academicStats, setAcademicStats] = useState<AcademicStats | null>(null);
   const [loading, setLoading] = useState(true);
@@ -140,15 +119,14 @@ export function AcademicModule() {
     setError('');
 
     try {
-      const [coursesRes, marksRes, attendanceRes, statsRes] = await Promise.allSettled([
+      const [coursesRes, marksRes, attendanceRes] = await Promise.allSettled([
         apiClient.getMyCourses(),
         apiClient.getMarks(),
-        apiClient.getAttendance(),
-        apiClient.getAcademicStats?.() || Promise.resolve(null)
+        apiClient.getAttendance()
       ]);
 
       // Process courses
-      if (coursesRes.status === 'fulfilled' && coursesRes.value?.courses) {
+      if (coursesRes.status === 'fulfilled' && coursesRes.value && typeof coursesRes.value === 'object' && 'courses' in coursesRes.value) {
         const courseList = Array.isArray(coursesRes.value.courses) 
           ? coursesRes.value.courses.map((course: any) => ({
               ...course,
@@ -159,7 +137,7 @@ export function AcademicModule() {
       }
 
       // Process marks
-      if (marksRes.status === 'fulfilled' && marksRes.value?.marks) {
+      if (marksRes.status === 'fulfilled' && marksRes.value && typeof marksRes.value === 'object' && 'marks' in marksRes.value) {
         const marksList = Array.isArray(marksRes.value.marks)
           ? marksRes.value.marks.map((mark: any) => ({
               ...mark,
@@ -171,23 +149,70 @@ export function AcademicModule() {
       }
 
       // Process attendance
-      if (attendanceRes.status === 'fulfilled' && attendanceRes.value?.stats) {
-        const attendanceList = attendanceRes.value.stats.map((stat: any) => ({
-          courseId: stat.course?._id || stat.course?.id || '',
-          courseName: stat.course?.name || 'Unknown Course',
-          totalClasses: stat.totalClasses || 0,
-          attendedClasses: stat.attendedClasses || 0,
-          percentage: stat.percentage || 0,
-          status: getAttendanceStatus(stat.percentage || 0),
-          lastUpdated: stat.lastUpdated || new Date().toISOString(),
-          requiredClasses: calculateRequiredClasses(stat.percentage || 0, stat.totalClasses || 0)
-        }));
+      if (attendanceRes.status === 'fulfilled' && attendanceRes.value && typeof attendanceRes.value === 'object' && 'stats' in attendanceRes.value) {
+        console.log('Raw attendance response:', attendanceRes.value);
+        console.log('Attendance stats:', attendanceRes.value.stats);
+        
+        const attendanceList = (attendanceRes.value.stats as any[]).map((stat: any) => {
+          console.log('Processing attendance stat:', stat);
+          return {
+            courseId: stat.course?._id || stat.course?.id || '',
+            courseName: stat.course?.name || 'Unknown Course',
+            totalClasses: stat.total || 0, // Map from backend 'total' field
+            attendedClasses: stat.present || 0, // Map from backend 'present' field
+            percentage: stat.percentage || 0,
+            status: getAttendanceStatus(stat.percentage || 0),
+            lastUpdated: new Date().toISOString(),
+            requiredClasses: calculateRequiredClasses(stat.percentage || 0, stat.total || 0)
+          };
+        });
+        
+        console.log('Processed attendance list:', attendanceList);
         setAttendanceRecords(attendanceList);
+        
+        // Calculate overall attendance percentage
+        if (attendanceList.length > 0) {
+          const totalClasses = attendanceList.reduce((sum, record) => sum + record.totalClasses, 0);
+          const totalAttended = attendanceList.reduce((sum, record) => sum + record.attendedClasses, 0);
+          const overallPercentage = totalClasses > 0 ? Math.round((totalAttended / totalClasses) * 100) : 0;
+          
+          console.log('Overall attendance calculation:', {
+            totalClasses,
+            totalAttended,
+            overallPercentage
+          });
+          
+          setAcademicStats(prev => {
+            if (!prev) {
+              return {
+                overallAttendance: overallPercentage,
+                averageMarks: 0,
+                totalCredits: 0,
+                completedCredits: 0,
+                currentSemester: '',
+                cgpa: 0,
+                sgpa: 0
+              };
+            }
+            return {
+              ...prev,
+              overallAttendance: overallPercentage
+            };
+          });
+        }
       }
 
-      // Process academic stats
-      if (statsRes.status === 'fulfilled' && statsRes.value) {
-        setAcademicStats(statsRes.value);
+      // Set default academic stats if not available
+      if (!academicStats) {
+        setAcademicStats({
+          overallAttendance: 0,
+          averageMarks: 0,
+          totalCredits: 0,
+          completedCredits: 0,
+          currentSemester: '',
+          cgpa: 0,
+          sgpa: 0
+        });
       }
 
     } catch (err) {
@@ -239,14 +264,10 @@ export function AcademicModule() {
 
   // Enhanced tabs
   const tabs = [
-    // { id: 'dashboard', label: 'Dashboard', icon: BarChart3 },
     { id: 'attendance', label: 'Attendance', icon: Clock },
     { id: 'marks', label: 'Marks & Grades', icon: Award },
     { id: 'schedule', label: 'Timetable', icon: Calendar },
-    // { id: 'courses', label: 'My Courses', icon: BookOpen },
   ];
-
-  const weekDays = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
   if (loading && !refreshing) {
     return (
@@ -276,7 +297,7 @@ export function AcademicModule() {
           </div>
           <select
             value={sortBy}
-            onChange={(e) => setSortBy(e.target.value as any)}
+            onChange={(e) => setSortBy(e.target.value as 'name' | 'attendance' | 'marks' | 'credits')}
             className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
           >
             <option value="name">Sort by Name</option>
@@ -353,7 +374,9 @@ export function AcademicModule() {
                   <div className="flex items-center justify-between">
                     <div>
                       <p className="text-sm font-medium text-gray-600">Overall Attendance</p>
-                      <p className="text-2xl font-bold text-gray-900">{academicStats.overallAttendance}%</p>
+                      <p className="text-2xl font-bold text-gray-900">
+                        {academicStats.overallAttendance > 0 ? `${academicStats.overallAttendance}%` : 'N/A'}
+                      </p>
                     </div>
                     <Clock className="w-8 h-8 text-blue-600" />
                   </div>
@@ -364,7 +387,9 @@ export function AcademicModule() {
                   <div className="flex items-center justify-between">
                     <div>
                       <p className="text-sm font-medium text-gray-600">Average Marks</p>
-                      <p className="text-2xl font-bold text-gray-900">{academicStats.averageMarks}%</p>
+                      <p className="text-2xl font-bold text-gray-900">
+                        {academicStats.averageMarks > 0 ? `${academicStats.averageMarks}%` : 'N/A'}
+                      </p>
                     </div>
                     <Award className="w-8 h-8 text-green-600" />
                   </div>
@@ -375,7 +400,9 @@ export function AcademicModule() {
                   <div className="flex items-center justify-between">
                     <div>
                       <p className="text-sm font-medium text-gray-600">Credits Progress</p>
-                      <p className="text-2xl font-bold text-gray-900">{academicStats.completedCredits}/{academicStats.totalCredits}</p>
+                      <p className="text-2xl font-bold text-gray-900">
+                        {academicStats.totalCredits > 0 ? `${academicStats.completedCredits}/${academicStats.totalCredits}` : 'N/A'}
+                      </p>
                     </div>
                     <BookOpen className="w-8 h-8 text-purple-600" />
                   </div>
@@ -386,7 +413,9 @@ export function AcademicModule() {
                   <div className="flex items-center justify-between">
                     <div>
                       <p className="text-sm font-medium text-gray-600">CGPA</p>
-                      <p className="text-2xl font-bold text-gray-900">{academicStats.cgpa || 'N/A'}</p>
+                      <p className="text-2xl font-bold text-gray-900">
+                        {academicStats.cgpa && academicStats.cgpa > 0 ? academicStats.cgpa : 'N/A'}
+                      </p>
                     </div>
                     <TrendingUp className="w-8 h-8 text-orange-600" />
                   </div>
@@ -411,7 +440,7 @@ export function AcademicModule() {
                     <div className="flex-1">
                       <p className="font-medium text-red-900">Low attendance in {record.courseName}</p>
                       <p className="text-sm text-red-700">
-                        Current: {record.percentage}% - Attend next {record.requiredClasses} classes to reach 75%
+                        Current: {record.percentage}% - {record.requiredClasses && record.requiredClasses > 0 ? `Attend next ${record.requiredClasses} classes to reach 75%` : 'Attendance needs improvement'}
                       </p>
                     </div>
                   </div>
@@ -419,7 +448,9 @@ export function AcademicModule() {
                 {attendanceRecords.filter(record => record.status === 'critical').length === 0 && (
                   <div className="flex items-center space-x-3 p-3 bg-green-50 rounded-lg">
                     <CheckCircle className="w-5 h-5 text-green-500" />
-                    <p className="text-green-900">All attendance requirements are on track!</p>
+                    <p className="text-green-900">
+                      {attendanceRecords.length > 0 ? 'All attendance requirements are on track!' : 'No attendance data available.'}
+                    </p>
                   </div>
                 )}
               </div>
@@ -460,7 +491,7 @@ export function AcademicModule() {
                           <span className="text-gray-600">Classes:</span>
                           <span className="text-gray-900">{record.attendedClasses}/{record.totalClasses}</span>
                         </div>
-                        {record.requiredClasses > 0 && (
+                        {record.requiredClasses && record.requiredClasses > 0 && (
                           <div className="text-xs text-orange-600 mt-2">
                             Attend next {record.requiredClasses} classes to reach 75%
                           </div>
@@ -559,62 +590,11 @@ export function AcademicModule() {
             <CardTitle>Weekly Timetable</CardTitle>
           </CardHeader>
           <CardContent>
-            {schedule.length === 0 ? (
-              <div className="text-center py-8 text-gray-500">
-                <Calendar className="w-12 h-12 mx-auto mb-4 text-gray-400" />
-                <p>No timetable data available.</p>
-                <p className="text-sm text-gray-400 mt-2">Contact admin to update your schedule.</p>
-              </div>
-            ) : (
-            <div className="overflow-x-auto">
-                <table className="min-w-full border border-gray-200">
-                <thead className="bg-gray-50">
-                  <tr>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase border-r">Time</th>
-                      {weekDays.map(day => (
-                        <th key={day} className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase border-r">
-                          {day}
-                        </th>
-                      ))}
-                  </tr>
-                </thead>
-                <tbody className="bg-white divide-y divide-gray-200">
-                  {schedule.map((slot, index) => (
-                      <tr key={slot.id || index} className="hover:bg-gray-50">
-                        <td className="px-4 py-4 text-sm font-medium text-gray-900 border-r bg-gray-50">
-                          {slot.time}
-                        </td>
-                        {weekDays.map(day => {
-                          const dayKey = day.toLowerCase() as keyof ScheduleSlot;
-                          const classInfo = slot[dayKey] as string;
-                          return (
-                            <td key={day} className="px-4 py-4 text-sm text-gray-900 border-r">
-                              {classInfo && (
-                                <div className="p-2 bg-blue-50 rounded border-l-2 border-blue-400">
-                                  <div className="font-medium text-blue-900">{classInfo}</div>
-                                  {slot.faculty && (
-                                    <div className="text-xs text-blue-700 flex items-center mt-1">
-                                      <User className="w-3 h-3 mr-1" />
-                                      {slot.faculty}
-                                    </div>
-                                  )}
-                                  {slot.room && (
-                                    <div className="text-xs text-blue-700 flex items-center">
-                                      <MapPin className="w-3 h-3 mr-1" />
-                                      {slot.room}
-                                    </div>
-                                  )}
-                                </div>
-                              )}
-                            </td>
-                          );
-                        })}
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+            <div className="text-center py-8 text-gray-500">
+              <Calendar className="w-12 h-12 mx-auto mb-4 text-gray-400" />
+              <p>No timetable data available.</p>
+              <p className="text-sm text-gray-400 mt-2">Contact admin to update your schedule.</p>
             </div>
-            )}
           </CardContent>
         </Card>
       )}

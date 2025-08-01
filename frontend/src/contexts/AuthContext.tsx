@@ -7,6 +7,7 @@ interface AuthContextType {
   user: User | null;
   login: (email: string, password: string) => Promise<void>;
   logout: () => void;
+  updateUser: (userData: User) => void;
   isLoading: boolean;
   token: string | null;
 }
@@ -91,8 +92,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     localStorage.removeItem('educonnect_token');
   };
 
+  const updateUser = (userData: User) => {
+    setUser(userData);
+    localStorage.setItem('educonnect_user', JSON.stringify(userData));
+  };
+
   return (
-    <AuthContext.Provider value={{ user, login, logout, isLoading, token }}>
+    <AuthContext.Provider value={{ user, login, logout, updateUser, isLoading, token }}>
       {children}
     </AuthContext.Provider>
   );

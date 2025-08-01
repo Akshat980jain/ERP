@@ -124,6 +124,95 @@ router.get('/me', auth, async (req, res) => {
   }
 });
 
+// @route   PUT /api/auth/profile
+router.put('/profile', auth, async (req, res) => {
+  try {
+    const {
+      name,
+      email,
+      phone,
+      address,
+      studentId,
+      employeeId,
+      semester,
+      section,
+      department
+    } = req.body;
+
+    const user = await User.findById(req.user.id);
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'User not found' });
+    }
+
+    console.log('Current user email:', user.email);
+    console.log('Requested email:', email);
+    console.log('User ID:', req.user.id);
+
+    // Update basic fields
+    if (name) user.name = name;
+    
+    // Handle email update with proper validation
+    if (email !== undefined && email !== user.email) {
+      console.log('Email is being changed from', user.email, 'to', email);
+      
+      // Check if email is already taken by another user
+      const existingUser = await User.findOne({ 
+        email: email,
+        _id: { $ne: req.user.id } 
+      });
+      
+      console.log('Existing user with same email:', existingUser);
+      
+      if (existingUser) {
+        return res.status(400).json({ 
+          success: false, 
+          message: 'Email already exists' 
+        });
+      }
+      user.email = email;
+    }
+
+    // Update profile fields
+    if (!user.profile) user.profile = {};
+    if (phone !== undefined) user.profile.phone = phone;
+    if (address !== undefined) user.profile.address = address;
+    if (studentId !== undefined) user.profile.studentId = studentId;
+    if (employeeId !== undefined) user.profile.employeeId = employeeId;
+    if (semester !== undefined) user.profile.semester = semester;
+    if (section !== undefined) user.profile.section = section;
+    if (department !== undefined) user.department = department;
+
+    console.log('Saving user with data:', {
+      name: user.name,
+      email: user.email,
+      profile: user.profile,
+      department: user.department
+    });
+
+    await user.save();
+
+    // Return updated user data
+    const updatedUser = await User.findById(req.user.id).populate('courses');
+    res.json({ 
+      success: true, 
+      message: 'Profile updated successfully',
+      user: updatedUser 
+    });
+  } catch (error) {
+    console.error('Profile update error:', error);
+    
+    // Handle MongoDB duplicate key error specifically
+    if (error.code === 11000 && error.keyPattern && error.keyPattern.email) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Email already exists' 
+      });
+    }
+    
+    res.status(500).json({ success: false, message: 'Failed to update profile' });
+  }
+});
+
 // @route   POST /api/auth/request-verification (For existing users to change role)
 router.post('/request-verification', auth, async (req, res) => {
   try {

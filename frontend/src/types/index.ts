@@ -7,6 +7,7 @@ export interface User {
   profile: UserProfile;
   courses?: string[];
   department?: string;
+  branch?: string;
   createdAt: string;
   adminPrograms?: string[];
   program?: string;
@@ -20,8 +21,10 @@ export interface UserProfile {
   address?: string;
   studentId?: string;
   employeeId?: string;
-  semester?: number;
+  semester?: string;
   section?: string;
+  course?: string;
+  branch?: string;
 }
 
 export interface Course {

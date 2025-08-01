@@ -52,6 +52,23 @@ class ApiClient {
     return this.request('/auth/me');
   }
 
+  async updateProfile(profileData: {
+    name?: string;
+    email?: string;
+    phone?: string;
+    address?: string;
+    studentId?: string;
+    employeeId?: string;
+    semester?: string;
+    section?: string;
+    department?: string;
+  }) {
+    return this.request('/auth/profile', {
+      method: 'PUT',
+      body: JSON.stringify(profileData)
+    });
+  }
+
   // Notifications
   async getNotifications(params?: { category?: string; read?: string }) {
     const queryString = params ? `?${new URLSearchParams(params).toString()}` : '';

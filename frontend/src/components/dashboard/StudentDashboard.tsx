@@ -48,10 +48,12 @@ export function StudentDashboard() {
           });
           const marksArr = Object.entries(grouped).map(([subject, arr]) => ({ subject, marks: Math.round(arr.reduce((a, b) => a + b, 0) / arr.length) }));
           setMarksData(marksArr);
-          // CGPA (simple average for demo)
+          // CGPA calculation based on marks
           if (marksArr.length > 0) {
             const avg = marksArr.reduce((a, b) => a + b.marks, 0) / marksArr.length;
             setCgpa((avg / 10).toFixed(2));
+          } else {
+            setCgpa('N/A');
           }
         }
 
@@ -91,7 +93,7 @@ export function StudentDashboard() {
   }, []);
 
   const quickStats = [
-    { title: 'Overall Attendance', value: loading ? '...' : attendanceStats.percentage + '%', icon: Clock, color: 'text-green-600' },
+    { title: 'Overall Attendance', value: loading ? '...' : (attendanceStats.percentage > 0 ? attendanceStats.percentage + '%' : 'N/A'), icon: Clock, color: 'text-green-600' },
     { title: 'CGPA', value: loading ? '...' : cgpa, icon: Trophy, color: 'text-blue-600' },
     { title: 'Pending Fees', value: loading ? '...' : pendingFees, icon: CreditCard, color: 'text-green-600' },
     { title: 'Library Books', value: loading ? '...' : libraryBooks.toString(), icon: BookOpen, color: 'text-purple-600' },
