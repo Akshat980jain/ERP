@@ -39,6 +39,7 @@ app.use('/api/library', require('./routes/library'));
 app.use('/api/placement', require('./routes/placement'));
 app.use('/api/notifications', require('./routes/notifications'));
 app.use('/api/services', require('./routes/services'));
+app.use('/api/schedule', require('./routes/schedule'));
 // Reports, analytics, schedule, and settings would be handled in their respective routers if available
 // If not, they can be handled under /api/admin or /api/academic as appropriate
 

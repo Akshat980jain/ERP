@@ -15,7 +15,7 @@ class ApiClient {
     };
   }
 
-  private async request<T>(
+  async request<T>(
     endpoint: string,
     options: RequestInit = {}
   ): Promise<T> {
@@ -84,20 +84,151 @@ class ApiClient {
   }
 
   // Academic
-  async getCourses() {
-    return this.request('/academic/courses');
-  }
-
-  // Get only the courses the student is enrolled in
-  async getMyCourses() {
-    return this.request('/courses/my-courses');
-  }
-
   async getAttendance(courseId?: string) {
     const queryString = courseId ? `?courseId=${courseId}` : '';
     return this.request(`/academic/attendance${queryString}`);
   }
 
+  async updateAttendance(attendanceData: {
+    courseId: string;
+    studentId: string;
+    date: string;
+    status: 'present' | 'absent';
+    remarks?: string;
+  }) {
+    return this.request('/academic/attendance', {
+      method: 'PUT',
+      body: JSON.stringify(attendanceData)
+    });
+  }
+
+  // Schedule-based attendance methods
+  async getScheduleAttendance(courseId: string, date: string): Promise<{
+    success: boolean;
+    course: {
+      _id: string;
+      name: string;
+      code: string;
+    };
+    date: string;
+    dayOfWeek: string;
+    schedule: Array<{
+      day: string;
+      time: string;
+      room: string;
+    }>;
+    attendanceMatrix: Array<{
+      slot: {
+        day: string;
+        time: string;
+        room: string;
+      };
+      attendance: Array<{
+        student: {
+          _id: string;
+          name: string;
+          email: string;
+          studentId: string;
+        };
+        status: 'present' | 'absent' | 'late' | null;
+        markedAt: string | null;
+        isWithinSchedule: boolean;
+        remarks: string;
+      }>;
+    }>;
+    message?: string;
+  }> {
+    return this.request(`/academic/schedule-attendance?courseId=${courseId}&date=${date}`);
+  }
+
+  async markScheduleAttendance(data: {
+    courseId: string;
+    date: string;
+    scheduleSlot: {
+      startTime: string;
+      endTime: string;
+    };
+    attendanceData: Array<{
+      studentId: string;
+      status: 'present' | 'absent' | 'late';
+      remarks?: string;
+    }>;
+  }): Promise<{
+    success: boolean;
+    message: string;
+    results: Array<{
+      studentId: string;
+      status: string;
+    }>;
+    isWithinTimeWindow: boolean;
+  }> {
+    return this.request('/academic/schedule-attendance', {
+      method: 'POST',
+      body: JSON.stringify(data)
+    });
+  }
+
+  async getAttendanceSchedule(courseId: string): Promise<{
+    success: boolean;
+    course: {
+      _id: string;
+      name: string;
+      code: string;
+    };
+    date: string;
+    dayOfWeek: string;
+    schedule: Array<{
+      day: string;
+      time: string;
+      room: string;
+      attendanceCount: number;
+      markedCount: number;
+    }>;
+  }> {
+    return this.request(`/academic/attendance-schedule?courseId=${courseId}`);
+  }
+
+  async enrollStudent(courseId: string, studentId: string) {
+    return this.request(`/courses/${courseId}/enroll`, {
+      method: 'POST',
+      body: JSON.stringify({ studentId })
+    });
+  }
+
+  // Course management
+  async getCourses() {
+    return this.request('/courses');
+  }
+
+  async getMyCourses() {
+    return this.request('/courses/my-courses');
+  }
+
+  async getFacultyCourses() {
+    return this.request('/courses/faculty-courses');
+  }
+
+  async createCourse(courseData: Record<string, unknown>) {
+    return this.request('/courses', {
+      method: 'POST',
+      body: JSON.stringify(courseData)
+    });
+  }
+
+  async updateCourse(courseId: string, courseData: Record<string, unknown>) {
+    return this.request(`/courses/${courseId}`, {
+      method: 'PUT',
+      body: JSON.stringify(courseData)
+    });
+  }
+
+  async deleteCourse(courseId: string) {
+    return this.request(`/courses/${courseId}`, {
+      method: 'DELETE'
+    });
+  }
+
+  // Marks
   async getMarks(courseId?: string) {
     const queryString = courseId ? `?courseId=${courseId}` : '';
     return this.request(`/academic/marks${queryString}`);
@@ -159,6 +290,32 @@ class ApiClient {
     return this.request('/services', {
       method: 'POST',
       body: JSON.stringify({ type, reason, documents })
+    });
+  }
+
+  // Schedule methods
+  async getSchedule() {
+    return this.request('/schedule');
+  }
+
+  async addScheduleItem(scheduleData: Record<string, unknown>) {
+    return this.request('/schedule', {
+      method: 'POST',
+      body: JSON.stringify(scheduleData)
+    });
+  }
+
+  async updateScheduleItem(id: string, scheduleData: Record<string, unknown>) {
+    return this.request(`/schedule/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(scheduleData)
+    });
+  }
+
+  async deleteScheduleItem(id: string, scheduleData: Record<string, unknown>) {
+    return this.request(`/schedule/${id}`, {
+      method: 'DELETE',
+      body: JSON.stringify(scheduleData)
     });
   }
 }

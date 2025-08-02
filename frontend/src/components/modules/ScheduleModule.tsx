@@ -2,6 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { Calendar, Clock, MapPin, Plus, Edit, Trash2 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
+import apiClient from '../../utils/api';
 
 interface ScheduleItem {
   _id: string;
@@ -23,13 +24,15 @@ interface ScheduleItem {
 
 const DAYS_OF_WEEK = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 const TIME_SLOTS = [
-  '08:00', '09:00', '10:00', '11:00', '12:00', '13:00', '14:00', '15:00', '16:00', '17:00'
+  '08:00', '08:30', '09:00', '09:30', '10:00', '10:30', '11:00', '11:30', 
+  '12:00', '12:30', '13:00', '13:30', '14:00', '14:30', '15:00', '15:30', 
+  '16:00', '16:30', '17:00', '17:30', '18:00', '18:30', '19:00', '19:30'
 ];
 
 export function ScheduleModule() {
-  const { user, token } = useAuth();
+  const { user } = useAuth();
   const [schedule, setSchedule] = useState<ScheduleItem[]>([]);
-  const [courses, setCourses] = useState<any[]>([]);
+  const [courses, setCourses] = useState<Array<{ _id: string; name: string; code: string }>>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
@@ -41,7 +44,7 @@ export function ScheduleModule() {
     startTime: '09:00',
     endTime: '10:00',
     room: '',
-    type: 'lecture' as const
+    type: 'lecture' as 'lecture' | 'lab' | 'tutorial' | 'seminar'
   });
 
   useEffect(() => {
@@ -49,20 +52,31 @@ export function ScheduleModule() {
     fetchCourses();
   }, []);
 
+  // Clear success/error messages after 5 seconds
+  useEffect(() => {
+    if (success || error) {
+      const timer = setTimeout(() => {
+        setSuccess('');
+        setError('');
+      }, 5000);
+      return () => clearTimeout(timer);
+    }
+  }, [success, error]);
+
   const fetchSchedule = async () => {
     setLoading(true);
     setError('');
     try {
-      const res = await fetch('/api/schedule', {
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
-      const data = await res.json();
+      const data = await apiClient.getSchedule() as { success: boolean; schedule: ScheduleItem[]; message?: string };
+      console.log('Fetched schedule data:', data);
       if (data.success) {
+        console.log('Setting schedule with items:', data.schedule.length);
         setSchedule(data.schedule);
       } else {
         setError(data.message || 'Failed to fetch schedule');
       }
-    } catch {
+    } catch (error) {
+      console.error('Error fetching schedule:', error);
       setError('Failed to fetch schedule');
     }
     setLoading(false);
@@ -70,10 +84,7 @@ export function ScheduleModule() {
 
   const fetchCourses = async () => {
     try {
-      const res = await fetch('/api/courses', {
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
-      const data = await res.json();
+      const data = await apiClient.getCourses() as { success: boolean; courses: Array<{ _id: string; name: string; code: string }>; message?: string };
       if (data.success) {
         setCourses(data.courses);
       }
@@ -89,17 +100,18 @@ export function ScheduleModule() {
     setSuccess('');
 
     try {
-      const res = await fetch('/api/schedule', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify(newScheduleItem)
-      });
-      const data = await res.json();
+      const scheduleData = {
+        courseId: newScheduleItem.course,
+        dayOfWeek: newScheduleItem.dayOfWeek,
+        startTime: newScheduleItem.startTime,
+        endTime: newScheduleItem.endTime,
+        room: newScheduleItem.room,
+        type: newScheduleItem.type
+      };
+      
+      const data = await apiClient.addScheduleItem(scheduleData) as { success: boolean; message?: string };
       if (data.success) {
-        setSchedule([...schedule, data.scheduleItem]);
+        await fetchSchedule(); // Refresh the schedule
         setNewScheduleItem({
           course: '',
           dayOfWeek: 'Monday',
@@ -128,20 +140,22 @@ export function ScheduleModule() {
     setSuccess('');
 
     try {
-      const res = await fetch(`/api/schedule/${editingItem._id}`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify(newScheduleItem)
-      });
-      const data = await res.json();
+      const scheduleData = {
+        courseId: newScheduleItem.course,
+        dayOfWeek: newScheduleItem.dayOfWeek,
+        startTime: newScheduleItem.startTime,
+        endTime: newScheduleItem.endTime,
+        room: newScheduleItem.room,
+        type: newScheduleItem.type
+      };
+      
+      const data = await apiClient.updateScheduleItem(editingItem.course._id, scheduleData) as { success: boolean; message?: string };
+      console.log('Update response:', data);
       if (data.success) {
-        setSchedule(schedule.map(item => 
-          item._id === editingItem._id ? data.scheduleItem : item
-        ));
+        console.log('Update successful, refreshing schedule...');
+        await fetchSchedule(); // Refresh the schedule
         setEditingItem(null);
+        setShowAddForm(false);
         setNewScheduleItem({
           course: '',
           dayOfWeek: 'Monday',
@@ -160,17 +174,19 @@ export function ScheduleModule() {
     setLoading(false);
   };
 
-  const deleteScheduleItem = async (id: string) => {
+  const deleteScheduleItem = async (item: ScheduleItem) => {
     if (!window.confirm('Are you sure you want to delete this schedule item?')) return;
 
     try {
-      const res = await fetch(`/api/schedule/${id}`, {
-        method: 'DELETE',
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
-      const data = await res.json();
+      const scheduleData = {
+        courseId: item.course._id,
+        dayOfWeek: item.dayOfWeek,
+        startTime: item.startTime
+      };
+      
+      const data = await apiClient.deleteScheduleItem(item.course._id, scheduleData) as { success: boolean; message?: string };
       if (data.success) {
-        setSchedule(schedule.filter(item => item._id !== id));
+        await fetchSchedule(); // Refresh the schedule
         setSuccess('Schedule item deleted successfully!');
       } else {
         setError(data.message || 'Failed to delete schedule item');
@@ -265,7 +281,7 @@ export function ScheduleModule() {
                 <label className="block text-sm font-medium text-gray-700 mb-1">Type</label>
                 <select
                   value={newScheduleItem.type}
-                  onChange={(e) => setNewScheduleItem({ ...newScheduleItem, type: e.target.value as any })}
+                  onChange={(e) => setNewScheduleItem({ ...newScheduleItem, type: e.target.value as 'lecture' | 'lab' | 'tutorial' | 'seminar' })}
                   className="w-full border rounded px-3 py-2"
                 >
                   <option value="lecture">Lecture</option>
@@ -290,27 +306,49 @@ export function ScheduleModule() {
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Start Time</label>
-                <select
-                  value={newScheduleItem.startTime}
-                  onChange={(e) => setNewScheduleItem({ ...newScheduleItem, startTime: e.target.value })}
-                  className="w-full border rounded px-3 py-2"
-                >
-                  {TIME_SLOTS.map(time => (
-                    <option key={time} value={time}>{time}</option>
-                  ))}
-                </select>
+                <div className="flex gap-2">
+                  <input
+                    type="time"
+                    value={newScheduleItem.startTime}
+                    onChange={(e) => setNewScheduleItem({ ...newScheduleItem, startTime: e.target.value })}
+                    className="flex-1 border rounded px-3 py-2"
+                    required
+                  />
+                  <select
+                    value={newScheduleItem.startTime}
+                    onChange={(e) => setNewScheduleItem({ ...newScheduleItem, startTime: e.target.value })}
+                    className="w-24 border rounded px-2 py-2 text-xs"
+                  >
+                    <option value="">Quick</option>
+                    {TIME_SLOTS.map(time => (
+                      <option key={time} value={time}>{time}</option>
+                    ))}
+                  </select>
+                </div>
+                <p className="text-xs text-gray-500 mt-1">Enter custom time or use quick select</p>
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">End Time</label>
-                <select
-                  value={newScheduleItem.endTime}
-                  onChange={(e) => setNewScheduleItem({ ...newScheduleItem, endTime: e.target.value })}
-                  className="w-full border rounded px-3 py-2"
-                >
-                  {TIME_SLOTS.map(time => (
-                    <option key={time} value={time}>{time}</option>
-                  ))}
-                </select>
+                <div className="flex gap-2">
+                  <input
+                    type="time"
+                    value={newScheduleItem.endTime}
+                    onChange={(e) => setNewScheduleItem({ ...newScheduleItem, endTime: e.target.value })}
+                    className="flex-1 border rounded px-3 py-2"
+                    required
+                  />
+                  <select
+                    value={newScheduleItem.endTime}
+                    onChange={(e) => setNewScheduleItem({ ...newScheduleItem, endTime: e.target.value })}
+                    className="w-24 border rounded px-2 py-2 text-xs"
+                  >
+                    <option value="">Quick</option>
+                    {TIME_SLOTS.map(time => (
+                      <option key={time} value={time}>{time}</option>
+                    ))}
+                  </select>
+                </div>
+                <p className="text-xs text-gray-500 mt-1">Enter custom time or use quick select</p>
               </div>
             </div>
             <div>
@@ -352,8 +390,8 @@ export function ScheduleModule() {
                 {day}
               </h3>
               <div className="space-y-2">
-                {getScheduleForDay(day).map(item => (
-                  <div key={item._id} className="bg-gray-50 rounded-lg p-3 hover:bg-gray-100 transition-colors">
+                {getScheduleForDay(day).map((item, index) => (
+                  <div key={`${item._id}-${index}`} className="bg-gray-50 rounded-lg p-3 hover:bg-gray-100 transition-colors">
                     <div className="flex items-start justify-between">
                       <div className="flex-1">
                         <div className="font-medium text-sm text-gray-900 mb-1">
@@ -384,7 +422,7 @@ export function ScheduleModule() {
                             <Edit className="w-3 h-3" />
                           </button>
                           <button
-                            onClick={() => deleteScheduleItem(item._id)}
+                            onClick={() => deleteScheduleItem(item)}
                             className="text-red-600 hover:text-red-800 p-1"
                             title="Delete"
                           >

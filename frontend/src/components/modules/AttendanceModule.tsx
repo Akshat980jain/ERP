@@ -1,7 +1,9 @@
 // src/components/modules/AttendanceModule.tsx
 import React, { useState, useEffect } from 'react';
-import { Calendar, Users, CheckCircle, XCircle, Clock, Download } from 'lucide-react';
+import { Users, Calendar, CheckCircle, XCircle, Download, Clock, AlertTriangle, CheckSquare } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
+import apiClient from '../../utils/api';
+import { ScheduleAttendanceData } from '../../types';
 
 interface Student {
   _id: string;
@@ -14,36 +16,53 @@ interface Course {
   _id: string;
   name: string;
   code: string;
+  schedule: Array<{
+    day: string;
+    time: string;
+    room: string;
+  }>;
+}
+
+interface ScheduleSlot {
+  day: string;
+  time: string;
+  room: string;
 }
 
 interface AttendanceRecord {
-  _id: string;
   student: Student;
-  course: string;
-  date: string;
-  status: 'present' | 'absent';
-  markedBy: string;
+  status: 'present' | 'absent' | 'late' | null;
+  markedAt: string | null;
+  isWithinSchedule: boolean;
+  remarks: string;
 }
 
 export function AttendanceModule() {
-  const { token } = useAuth();
-  const [students, setStudents] = useState<Student[]>([]);
-  const [attendance, setAttendance] = useState<{ [key: string]: 'present' | 'absent' }>({});
+  const { token, user } = useAuth();
+  const [courses, setCourses] = useState<Course[]>([]);
   const [selectedCourse, setSelectedCourse] = useState('');
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
-  const [courses, setCourses] = useState<Course[]>([]);
+  const [scheduleAttendance, setScheduleAttendance] = useState<ScheduleAttendanceData | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+  const [currentTime, setCurrentTime] = useState(new Date());
+
+  // Update current time every minute
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setCurrentTime(new Date());
+    }, 60000);
+    return () => clearInterval(interval);
+  }, []);
 
   useEffect(() => {
     fetchCourses();
   }, []);
 
   useEffect(() => {
-    if (selectedCourse) {
-      fetchStudents();
-      fetchExistingAttendance();
+    if (selectedCourse && selectedDate) {
+      fetchScheduleAttendance();
     }
   }, [selectedCourse, selectedDate]);
 
@@ -61,49 +80,74 @@ export function AttendanceModule() {
     }
   };
 
-  const fetchStudents = async () => {
+  const fetchScheduleAttendance = async () => {
     setLoading(true);
+    setError('');
     try {
-      const res = await fetch(`/api/courses/${selectedCourse}/students`, {
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
-      const data = await res.json();
+      const data = await apiClient.getScheduleAttendance(selectedCourse, selectedDate);
       if (data.success) {
-        setStudents(data.students);
+        setScheduleAttendance(data as ScheduleAttendanceData);
       } else {
-        setError(data.message || 'Failed to fetch students');
+        setError(data.message || 'Failed to fetch schedule attendance');
       }
-    } catch {
-      setError('Failed to fetch students');
+    } catch (error) {
+      console.error('Error fetching schedule attendance:', error);
+      setError('Failed to fetch schedule attendance');
     }
     setLoading(false);
   };
 
-  const fetchExistingAttendance = async () => {
-    try {
-      const res = await fetch(`/api/academic/attendance?courseId=${selectedCourse}&date=${selectedDate}`, {
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
-      const data = await res.json();
-      if (data.success) {
-        const attendanceMap: { [key: string]: 'present' | 'absent' } = {};
-        data.attendance.forEach((record: AttendanceRecord) => {
-          attendanceMap[record.student._id] = record.status;
-        });
-        setAttendance(attendanceMap);
-      }
-    } catch {
-      console.log('No existing attendance found');
-    }
+  const isWithinTimeWindow = (slotTime: string) => {
+    const now = currentTime;
+    const slotStartTime = new Date(selectedDate + 'T' + slotTime);
+    const slotEndTime = new Date(slotStartTime.getTime() + 60 * 60 * 1000); // 1 hour duration
+    
+    // Allow marking attendance 15 minutes before and 30 minutes after the scheduled time
+    const earlyWindow = new Date(slotStartTime.getTime() - 15 * 60 * 1000);
+    const lateWindow = new Date(slotEndTime.getTime() + 30 * 60 * 1000);
+    
+    return now >= earlyWindow && now <= lateWindow;
   };
 
-  const markAttendance = (studentId: string, status: 'present' | 'absent') => {
-    setAttendance(prev => ({ ...prev, [studentId]: status }));
+  const getTimeStatus = (slotTime: string) => {
+    const now = currentTime;
+    const slotStartTime = new Date(selectedDate + 'T' + slotTime);
+    const slotEndTime = new Date(slotStartTime.getTime() + 60 * 60 * 1000);
+    
+    if (now < slotStartTime) return 'upcoming';
+    if (now >= slotStartTime && now <= slotEndTime) return 'current';
+    if (now > slotEndTime) return 'past';
+    return 'unknown';
   };
 
-  const submitAttendance = async () => {
-    if (!selectedCourse || Object.keys(attendance).length === 0) {
-      setError('Please select a course and mark attendance');
+  const markAttendance = (slotIndex: number, studentIndex: number, status: 'present' | 'absent' | 'late') => {
+    if (!scheduleAttendance) return;
+
+    const updatedMatrix = [...scheduleAttendance.attendanceMatrix];
+    updatedMatrix[slotIndex].attendance[studentIndex].status = status;
+    updatedMatrix[slotIndex].attendance[studentIndex].markedAt = new Date().toISOString();
+    updatedMatrix[slotIndex].attendance[studentIndex].isWithinSchedule = isWithinTimeWindow(updatedMatrix[slotIndex].slot.time);
+
+    setScheduleAttendance({
+      ...scheduleAttendance,
+      attendanceMatrix: updatedMatrix
+    });
+  };
+
+  const submitAttendance = async (slotIndex: number) => {
+    if (!scheduleAttendance) return;
+
+    const slot = scheduleAttendance.attendanceMatrix[slotIndex];
+    const attendanceData = slot.attendance
+      .filter(record => record.status !== null && record.student._id)
+      .map(record => ({
+        studentId: record.student._id,
+        status: record.status!,
+        remarks: record.remarks
+      }));
+
+    if (attendanceData.length === 0) {
+      setError('No attendance data to submit');
       return;
     }
 
@@ -112,91 +156,74 @@ export function AttendanceModule() {
     setSuccess('');
 
     try {
-      // Submit each student's attendance as a separate request
-      const attendanceData = Object.entries(attendance).map(([studentId, status]) => ({
-        studentId,
+      const data = await apiClient.markScheduleAttendance({
         courseId: selectedCourse,
         date: selectedDate,
-        status
-      }));
-      // Use Promise.all to submit all attendance records
-      const results = await Promise.all(attendanceData.map(async (record) => {
-        const res = await fetch('/api/academic/attendance', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${token}`
-          },
-          body: JSON.stringify(record)
-        });
-        const data = await res.json();
-        return { ...data, studentId: record.studentId };
-      }));
-      const failed = results.filter(r => !r.success);
-      if (failed.length === 0) {
-        setSuccess('Attendance marked successfully!');
-      } else if (failed.every(r => r.message && r.message.includes('already marked'))) {
-        setSuccess('Attendance marked successfully! (Some were already marked)');
+        scheduleSlot: {
+          startTime: slot.slot.time,
+          endTime: slot.slot.time // Assuming 1-hour slots
+        },
+        attendanceData
+      });
+
+      if (data.success) {
+        setSuccess(`Attendance marked successfully for ${slot.slot.time} slot!`);
+        await fetchScheduleAttendance(); // Refresh data
       } else {
-        const failedDetails = failed.map(r => {
-          const student = students.find(s => s._id === r.studentId);
-          return `${student?.name || r.studentId}: ${r.message || 'Failed'}`;
-        }).join('\n');
-        setError(`Some attendance records failed to save:\n${failedDetails}`);
+        setError(data.message || 'Failed to mark attendance');
       }
-    } catch {
+    } catch (error) {
+      console.error('Error marking attendance:', error);
       setError('Failed to mark attendance');
     }
     setLoading(false);
   };
 
-  const exportAttendance = async () => {
-    if (!selectedCourse) return;
-
-    try {
-      const res = await fetch(`/api/attendance/export?course=${selectedCourse}`, {
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
-      const blob = await res.blob();
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.style.display = 'none';
-      a.href = url;
-      a.download = `attendance_${selectedCourse}_${new Date().toISOString().split('T')[0]}.csv`;
-      document.body.appendChild(a);
-      a.click();
-      window.URL.revokeObjectURL(url);
-    } catch {
-      setError('Failed to export attendance');
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case 'present': return 'bg-green-100 text-green-800 border-green-200';
+      case 'absent': return 'bg-red-100 text-red-800 border-red-200';
+      case 'late': return 'bg-yellow-100 text-yellow-800 border-yellow-200';
+      default: return 'bg-gray-100 text-gray-800 border-gray-200';
     }
   };
 
-  const getAttendanceStats = () => {
-    const totalMarked = Object.keys(attendance).length;
-    const presentCount = Object.values(attendance).filter(status => status === 'present').length;
-    const absentCount = totalMarked - presentCount;
-    const percentage = totalMarked > 0 ? Math.round((presentCount / totalMarked) * 100) : 0;
-
-    return { totalMarked, presentCount, absentCount, percentage };
+  const getTimeStatusColor = (status: string) => {
+    switch (status) {
+      case 'current': return 'text-green-600';
+      case 'upcoming': return 'text-blue-600';
+      case 'past': return 'text-gray-500';
+      default: return 'text-gray-600';
+    }
   };
 
-  const stats = getAttendanceStats();
+  const getTimeStatusIcon = (status: string) => {
+    switch (status) {
+      case 'current': return <Clock className="w-4 h-4" />;
+      case 'upcoming': return <Calendar className="w-4 h-4" />;
+      case 'past': return <CheckSquare className="w-4 h-4" />;
+      default: return <Calendar className="w-4 h-4" />;
+    }
+  };
 
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
-        <h2 className="text-2xl font-bold text-gray-800">Attendance Marker</h2>
+        <h2 className="text-2xl font-bold text-gray-800">Schedule-Based Attendance</h2>
         <div className="flex items-center space-x-2 text-sm text-gray-600">
           <Clock className="w-4 h-4" />
-          <span>{new Date().toLocaleDateString()}</span>
+          <span>{currentTime.toLocaleTimeString()}</span>
         </div>
       </div>
 
-      {error && <div className="text-red-700 bg-red-50 p-3 rounded">{error}</div>}
+      {error && <div className="text-red-700 bg-red-50 p-3 rounded flex items-center">
+        <AlertTriangle className="w-4 h-4 mr-2" />
+        {error}
+      </div>}
       {success && <div className="text-green-700 bg-green-50 p-3 rounded">{success}</div>}
 
       <div className="bg-white rounded-lg shadow p-6">
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">Select Course</label>
             <select
@@ -221,127 +248,127 @@ export function AttendanceModule() {
               className="w-full border rounded px-3 py-2"
             />
           </div>
-          <div className="flex items-end">
-            <button
-              onClick={exportAttendance}
-              disabled={!selectedCourse}
-              className="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700 disabled:opacity-50 flex items-center"
-            >
-              <Download className="w-4 h-4 mr-2" />
-              Export
-            </button>
-          </div>
         </div>
 
-        {selectedCourse && Object.keys(attendance).length > 0 && (
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
-            <div className="bg-blue-50 p-4 rounded-lg text-center">
-              <div className="text-2xl font-bold text-blue-600">{stats.totalMarked}</div>
-              <div className="text-sm text-blue-600">Total Marked</div>
-            </div>
-            <div className="bg-green-50 p-4 rounded-lg text-center">
-              <div className="text-2xl font-bold text-green-600">{stats.presentCount}</div>
-              <div className="text-sm text-green-600">Present</div>
-            </div>
-            <div className="bg-red-50 p-4 rounded-lg text-center">
-              <div className="text-2xl font-bold text-red-600">{stats.absentCount}</div>
-              <div className="text-sm text-red-600">Absent</div>
-            </div>
-            <div className="bg-purple-50 p-4 rounded-lg text-center">
-              <div className="text-2xl font-bold text-purple-600">{stats.percentage}%</div>
-              <div className="text-sm text-purple-600">Attendance</div>
-            </div>
-          </div>
-        )}
-
-        {selectedCourse && (
-          <>
-            <div className="flex justify-between items-center mb-4">
-              <h3 className="text-lg font-semibold flex items-center">
-                <Users className="w-5 h-5 mr-2" />
-                Students ({students.length})
+        {scheduleAttendance && (
+          <div className="space-y-6">
+            <div className="bg-blue-50 p-4 rounded-lg">
+              <h3 className="font-semibold text-blue-800 mb-2">
+                {scheduleAttendance.course.name} ({scheduleAttendance.course.code})
               </h3>
-              <div className="flex space-x-2">
-                <button
-                  onClick={() => {
-                    const newAttendance: { [key: string]: 'present' | 'absent' } = {};
-                    students.forEach(student => {
-                      newAttendance[student._id] = 'present';
-                    });
-                    setAttendance(newAttendance);
-                  }}
-                  className="bg-green-600 text-white px-3 py-1 rounded text-sm hover:bg-green-700"
-                >
-                  Mark All Present
-                </button>
-                <button
-                  onClick={() => {
-                    const newAttendance: { [key: string]: 'present' | 'absent' } = {};
-                    students.forEach(student => {
-                      newAttendance[student._id] = 'absent';
-                    });
-                    setAttendance(newAttendance);
-                  }}
-                  className="bg-red-600 text-white px-3 py-1 rounded text-sm hover:bg-red-700"
-                >
-                  Mark All Absent
-                </button>
+              <p className="text-blue-600">
+                {new Date(scheduleAttendance.date).toLocaleDateString()} - {scheduleAttendance.dayOfWeek}
+              </p>
+            </div>
+
+            {scheduleAttendance.attendanceMatrix.length === 0 ? (
+              <div className="text-center py-8">
+                <Calendar className="w-16 h-16 text-gray-300 mx-auto mb-4" />
+                <p className="text-gray-500">No scheduled classes for this date</p>
               </div>
-            </div>
+            ) : (
+              <div className="space-y-6">
+                {scheduleAttendance.attendanceMatrix.map((slotData, slotIndex) => {
+                  const timeStatus = getTimeStatus(slotData.slot.time);
+                  const isWithinWindow = isWithinTimeWindow(slotData.slot.time);
+                  
+                  return (
+                    <div key={slotIndex} className="border rounded-lg p-4">
+                      <div className="flex items-center justify-between mb-4">
+                        <div className="flex items-center space-x-3">
+                          {getTimeStatusIcon(timeStatus)}
+                          <div>
+                            <h4 className="font-semibold text-lg">
+                              {slotData.slot.time} - {slotData.slot.room}
+                            </h4>
+                            <p className={`text-sm ${getTimeStatusColor(timeStatus)}`}>
+                              {timeStatus === 'current' ? 'Currently in session' :
+                               timeStatus === 'upcoming' ? 'Upcoming' :
+                               timeStatus === 'past' ? 'Completed' : 'Unknown'}
+                            </p>
+                          </div>
+                        </div>
+                        <div className="flex items-center space-x-2">
+                          {!isWithinWindow && (
+                            <div className="flex items-center text-orange-600 text-sm">
+                              <AlertTriangle className="w-4 h-4 mr-1" />
+                              Outside time window
+                            </div>
+                          )}
+                          <button
+                            onClick={() => submitAttendance(slotIndex)}
+                            disabled={loading || !isWithinWindow}
+                            className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                          >
+                            {loading ? 'Submitting...' : 'Submit Attendance'}
+                          </button>
+                        </div>
+                      </div>
 
-            <div className="space-y-2 max-h-96 overflow-y-auto">
-              {students.map(student => (
-                <div key={student._id} className="flex items-center justify-between p-3 border rounded hover:bg-gray-50">
-                  <div>
-                    <div className="font-medium">{student.name}</div>
-                    <div className="text-sm text-gray-600">{student.studentId} • {student.email}</div>
-                  </div>
-                  <div className="flex space-x-2">
-                    <button
-                      onClick={() => markAttendance(student._id, 'present')}
-                      className={`flex items-center px-3 py-1 rounded ${
-                        attendance[student._id] === 'present' 
-                          ? 'bg-green-600 text-white' 
-                          : 'border border-green-600 text-green-600 hover:bg-green-50'
-                      }`}
-                    >
-                      <CheckCircle className="w-4 h-4 mr-1" />
-                      Present
-                    </button>
-                    <button
-                      onClick={() => markAttendance(student._id, 'absent')}
-                      className={`flex items-center px-3 py-1 rounded ${
-                        attendance[student._id] === 'absent' 
-                          ? 'bg-red-600 text-white' 
-                          : 'border border-red-600 text-red-600 hover:bg-red-50'
-                      }`}
-                    >
-                      <XCircle className="w-4 h-4 mr-1" />
-                      Absent
-                    </button>
-                  </div>
-                </div>
-              ))}
-            </div>
-
-            {students.length > 0 && (
-              <div className="mt-6 flex justify-end">
-                <button
-                  onClick={submitAttendance}
-                  disabled={loading || Object.keys(attendance).length === 0}
-                  className="bg-blue-600 text-white px-6 py-2 rounded hover:bg-blue-700 disabled:opacity-50"
-                >
-                  {loading ? 'Submitting...' : 'Submit Attendance'}
-                </button>
+                      <div className="space-y-2 max-h-64 overflow-y-auto">
+                        {slotData.attendance.map((record, studentIndex) => (
+                          <div key={record.student._id} className="flex items-center justify-between p-3 border rounded hover:bg-gray-50">
+                            <div>
+                              <div className="font-medium">{record.student.name}</div>
+                              <div className="text-sm text-gray-600">
+                                {record.student.studentId} • {record.student.email}
+                              </div>
+                              {record.markedAt && (
+                                <div className="text-xs text-gray-500">
+                                  Marked at: {new Date(record.markedAt).toLocaleTimeString()}
+                                </div>
+                              )}
+                            </div>
+                            <div className="flex space-x-2">
+                              <button
+                                onClick={() => markAttendance(slotIndex, studentIndex, 'present')}
+                                className={`flex items-center px-3 py-1 rounded border ${
+                                  record.status === 'present' 
+                                    ? 'bg-green-600 text-white border-green-600' 
+                                    : 'border-green-600 text-green-600 hover:bg-green-50'
+                                }`}
+                              >
+                                <CheckCircle className="w-4 h-4 mr-1" />
+                                Present
+                              </button>
+                              <button
+                                onClick={() => markAttendance(slotIndex, studentIndex, 'absent')}
+                                className={`flex items-center px-3 py-1 rounded border ${
+                                  record.status === 'absent' 
+                                    ? 'bg-red-600 text-white border-red-600' 
+                                    : 'border-red-600 text-red-600 hover:bg-red-50'
+                                }`}
+                              >
+                                <XCircle className="w-4 h-4 mr-1" />
+                                Absent
+                              </button>
+                              <button
+                                onClick={() => markAttendance(slotIndex, studentIndex, 'late')}
+                                className={`flex items-center px-3 py-1 rounded border ${
+                                  record.status === 'late' 
+                                    ? 'bg-yellow-600 text-white border-yellow-600' 
+                                    : 'border-yellow-600 text-yellow-600 hover:bg-yellow-50'
+                                }`}
+                              >
+                                <Clock className="w-4 h-4 mr-1" />
+                                Late
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             )}
-          </>
+          </div>
         )}
 
         {!selectedCourse && (
           <div className="text-center py-12">
             <Calendar className="w-16 h-16 text-gray-300 mx-auto mb-4" />
-            <p className="text-gray-500">Select a course to mark attendance</p>
+            <p className="text-gray-500">Select a course to view schedule-based attendance</p>
           </div>
         )}
       </div>

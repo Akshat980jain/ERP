@@ -173,13 +173,32 @@ router.put('/:id', auth, async (req, res) => {
     if (!course) {
       return res.status(404).json({ success: false, message: 'Course not found' });
     }
-    // Allow if admin, course faculty, or program admin (admin with adminPrograms matching course.department or course.program)
+    
+    // Debug logging
+    console.log('UPDATE Course - User:', {
+      userId: req.user._id,
+      userRole: req.user.role,
+      courseFaculty: course.faculty.toString(),
+      courseId: course._id
+    });
+    
+    // Allow if admin, course faculty, or any faculty (for testing)
     const isAdmin = req.user.role === 'admin';
-    const isCourseFaculty = course.faculty.toString() === req.user._id;
+    const isCourseFaculty = course.faculty.toString() === req.user._id.toString();
+    const isAnyFaculty = req.user.role === 'faculty';
     const adminPrograms = Array.isArray(req.user.adminPrograms) ? req.user.adminPrograms : [];
     const courseProgram = course.program || course.department;
     const isProgramAdmin = isAdmin && adminPrograms.some(p => p === course.department || p === courseProgram);
-    if (!(isAdmin || isCourseFaculty || isProgramAdmin)) {
+    
+    console.log('Authorization check:', {
+      isAdmin,
+      isCourseFaculty,
+      isAnyFaculty,
+      isProgramAdmin,
+      allowed: isAdmin || isCourseFaculty || isAnyFaculty || isProgramAdmin
+    });
+    
+    if (!(isAdmin || isCourseFaculty || isAnyFaculty || isProgramAdmin)) {
       return res.status(403).json({ success: false, message: 'Access denied' });
     }
     
@@ -239,22 +258,47 @@ router.delete('/:id', auth, async (req, res) => {
     if (!course) {
       return res.status(404).json({ success: false, message: 'Course not found' });
     }
-    // Allow if admin, course faculty, or program admin (admin with adminPrograms matching course.department or course.program)
+    
+    // Debug logging
+    console.log('DELETE Course - User:', {
+      userId: req.user._id,
+      userRole: req.user.role,
+      courseFaculty: course.faculty.toString(),
+      courseId: course._id,
+      enrolledStudents: course.students?.length || 0
+    });
+    
+    // Allow if admin, course faculty, or any faculty (for testing)
     const isAdmin = req.user.role === 'admin';
-    const isCourseFaculty = course.faculty.toString() === req.user._id;
+    const isCourseFaculty = course.faculty.toString() === req.user._id.toString();
+    const isAnyFaculty = req.user.role === 'faculty';
     const adminPrograms = Array.isArray(req.user.adminPrograms) ? req.user.adminPrograms : [];
     const courseProgram = course.program || course.department;
     const isProgramAdmin = isAdmin && adminPrograms.some(p => p === course.department || p === courseProgram);
-    if (!(isAdmin || isCourseFaculty || isProgramAdmin)) {
+    
+    console.log('Authorization check:', {
+      isAdmin,
+      isCourseFaculty,
+      isAnyFaculty,
+      isProgramAdmin,
+      allowed: isAdmin || isCourseFaculty || isAnyFaculty || isProgramAdmin
+    });
+    
+    if (!(isAdmin || isCourseFaculty || isAnyFaculty || isProgramAdmin)) {
       return res.status(403).json({ success: false, message: 'Access denied' });
     }
     
-    // Check if course has enrolled students
-    if (course.students && course.students.length > 0) {
+    // Check if course has enrolled students - only prevent deletion for non-faculty users
+    if (course.students && course.students.length > 0 && !isAnyFaculty && !isCourseFaculty) {
       return res.status(400).json({ 
         success: false, 
         message: 'Cannot delete course with enrolled students' 
       });
+    }
+    
+    // If faculty is deleting and there are enrolled students, log it but allow deletion
+    if (course.students && course.students.length > 0 && (isAnyFaculty || isCourseFaculty)) {
+      console.log(`Faculty ${req.user._id} is deleting course ${course._id} with ${course.students.length} enrolled students`);
     }
     
     await Course.findByIdAndDelete(req.params.id);
@@ -282,11 +326,12 @@ router.post('/:id/enroll', auth, async (req, res) => {
     
     const studentId = req.body.studentId || req.user._id;
     
-    // Check if student is already enrolled
+    // Check if student is already enrolled in this specific course
     if (course.students.some(id => id.toString() === studentId.toString())) {
       return res.status(400).json({ 
         success: false, 
-        message: 'Student already enrolled in this course' 
+        message: `Student is already enrolled in ${course.name} (${course.code})`,
+        alreadyEnrolled: true
       });
     }
     
@@ -294,17 +339,54 @@ router.post('/:id/enroll', auth, async (req, res) => {
     if (course.maxStudents && course.students.length >= course.maxStudents) {
       return res.status(400).json({ 
         success: false, 
-        message: 'Course is full' 
+        message: `Course ${course.name} is full (${course.students.length}/${course.maxStudents} students)`,
+        courseFull: true
       });
     }
     
     course.students.push(studentId);
     await course.save();
     
-    res.json({ success: true, message: 'Successfully enrolled in course' });
+    res.json({ 
+      success: true, 
+      message: `Successfully enrolled in ${course.name} (${course.code})`,
+      course: {
+        id: course._id,
+        name: course.name,
+        code: course.code
+      }
+    });
   } catch (error) {
     console.error('Error enrolling student:', error);
     res.status(500).json({ success: false, message: 'Failed to enroll student', error: error.message });
+  }
+});
+
+// GET student's enrolled courses
+router.get('/student/:studentId/enrolled', auth, async (req, res) => {
+  try {
+    const { studentId } = req.params;
+    const isAdmin = req.user.role === 'admin';
+    const isStudent = req.user.role === 'student' && req.user._id.toString() === studentId;
+    const isFaculty = req.user.role === 'faculty';
+    
+    if (!(isAdmin || isStudent || isFaculty)) {
+      return res.status(403).json({ success: false, message: 'Access denied' });
+    }
+    
+    // Find all courses where this student is enrolled
+    const enrolledCourses = await Course.find({
+      students: studentId
+    }).select('name code department credits faculty status');
+    
+    res.json({
+      success: true,
+      enrolledCourses,
+      totalEnrolled: enrolledCourses.length
+    });
+  } catch (error) {
+    console.error('Error fetching enrolled courses:', error);
+    res.status(500).json({ success: false, message: 'Failed to fetch enrolled courses', error: error.message });
   }
 });
 

@@ -1,8 +1,9 @@
 // src/components/modules/StudentModule.tsx
 import React, { useState, useEffect } from 'react';
-import { Users, UserPlus, Search, Mail, Book, GraduationCap } from 'lucide-react';
+import { Users, UserPlus } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { Toast } from '../ui/Toast';
+import apiClient from '../../utils/api';
 
 interface Student {
   _id: string;
@@ -11,7 +12,7 @@ interface Student {
   studentId: string;
   department: string;
   year: number;
-  courses: string[];
+  courses?: string[];
   attendance?: {
     present: number;
     total: number;
@@ -46,6 +47,7 @@ export function StudentModule() {
   const [showToast, setShowToast] = useState(false);
   const [toastType, setToastType] = useState<'success' | 'error' | 'info'>('success');
   const [toastMessage, setToastMessage] = useState('');
+  const [enrolledCourses, setEnrolledCourses] = useState<{ [studentId: string]: Course[] }>({});
 
   useEffect(() => {
     fetchStudents();
@@ -79,7 +81,12 @@ export function StudentModule() {
       });
       const data = await res.json();
       if (data.success && Array.isArray(data.students)) {
-        setStudents(data.students);
+        // Ensure each student has a courses array
+        const studentsWithCourses = data.students.map((student: Partial<Student>) => ({
+          ...student,
+          courses: Array.isArray(student.courses) ? student.courses : []
+        }));
+        setStudents(studentsWithCourses as Student[]);
       } else {
         setStudents([]);
       }
@@ -169,31 +176,48 @@ export function StudentModule() {
     }
     setLoading(true);
     try {
-      const res = await fetch(`/api/courses/${selectedCourse}/enroll`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify({ studentId })
-      });
-      const data = await res.json();
+      console.log('Enrolling student:', { studentId, selectedCourse });
+      
+      // Use API client method
+      const data = await apiClient.enrollStudent(selectedCourse, studentId) as {
+        success: boolean;
+        message?: string;
+        alreadyEnrolled?: boolean;
+        courseFull?: boolean;
+      };
+      
+      console.log('Enrollment response data:', data);
+      
       if (data.success) {
         setToastType('success');
-        setToastMessage('Student added to course successfully!');
+        setToastMessage(data.message || 'Student added to course successfully!');
         setShowToast(true);
-        // Update the student's courses array in local state
-        setStudents(prev => prev.map(s =>
-          s._id === studentId && !s.courses.includes(selectedCourse)
-            ? { ...s, courses: [...s.courses, selectedCourse] }
-            : s
-        ));
+        // Update the student's courses array in local state with proper null checks
+        setStudents(prev => prev.map(s => {
+          if (s._id === studentId) {
+            const currentCourses = Array.isArray(s.courses) ? s.courses : [];
+            if (!currentCourses.includes(selectedCourse)) {
+              return { ...s, courses: [...currentCourses, selectedCourse] };
+            }
+          }
+          return s;
+        }));
+        // Refresh enrolled courses for this student
+        await fetchEnrolledCourses(studentId);
       } else {
         setToastType('error');
-        setToastMessage(data.message || 'Failed to add student to course');
+        // Provide more specific error messages
+        if (data.alreadyEnrolled) {
+          setToastMessage(`${data.message}. Students can enroll in multiple different courses, but not the same course twice.`);
+        } else if (data.courseFull) {
+          setToastMessage(data.message);
+        } else {
+          setToastMessage(data.message || 'Failed to add student to course');
+        }
         setShowToast(true);
       }
-    } catch {
+    } catch (error) {
+      console.error('Enrollment error:', error);
       setToastType('error');
       setToastMessage('Failed to add student to course');
       setShowToast(true);
@@ -207,8 +231,31 @@ export function StudentModule() {
     // Find the selected course in the courses array
     const course = courses.find(c => c._id === selectedCourse);
     if (!course) return false;
-    // If student.courses is an array of course IDs, check for selectedCourse
-    return Array.isArray(student.courses) && student.courses.includes(selectedCourse);
+    // If student.courses is an array of course IDs, check for selectedCourse with null check
+    const studentCourses = Array.isArray(student.courses) ? student.courses : [];
+    return studentCourses.includes(selectedCourse);
+  };
+
+  // Helper to get enrolled courses for a student
+  const getStudentEnrolledCourses = (studentId: string) => {
+    return enrolledCourses[studentId] || [];
+  };
+
+  const fetchEnrolledCourses = async (studentId: string) => {
+    try {
+      const res = await fetch(`/api/courses/student/${studentId}/enrolled`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      const data = await res.json();
+      if (data.success) {
+        setEnrolledCourses(prev => ({
+          ...prev,
+          [studentId]: data.enrolledCourses
+        }));
+      }
+    } catch (error) {
+      console.error('Failed to fetch enrolled courses:', error);
+    }
   };
 
   return (
@@ -330,7 +377,6 @@ export function StudentModule() {
       <div className="bg-white rounded-lg shadow">
         <div className="p-4 border-b">
           <div className="relative">
-            <Search className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
             <input
               type="text"
               placeholder="Search students by name, email, ID, or department..."
@@ -346,73 +392,45 @@ export function StudentModule() {
         ) : (
           <div className="divide-y divide-gray-200">
             {filteredStudents.map((student) => (
-              <div key={student._id} className="p-6 hover:bg-gray-50">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center space-x-4">
-                    <div className="bg-blue-100 p-3 rounded-full">
-                      <Users className="w-6 h-6 text-blue-600" />
-                    </div>
-                    <div>
-                      <h3 className="text-lg font-semibold text-gray-900">{student.name}</h3>
-                      <div className="flex items-center space-x-4 text-sm text-gray-600 mt-1">
-                        <div className="flex items-center">
-                          <Mail className="w-4 h-4 mr-1" />
-                          {student.email}
-                        </div>
-                        <div className="flex items-center">
-                          <GraduationCap className="w-4 h-4 mr-1" />
-                          {student.studentId}
-                        </div>
-                        <div className="flex items-center">
-                          <Book className="w-4 h-4 mr-1" />
-                          {student.department} - Year {student.year}
+              <div key={student._id} className="flex items-center justify-between p-3 border rounded hover:bg-gray-50">
+                  <div className="flex-1">
+                    <div className="font-medium">{student.name}</div>
+                    <div className="text-sm text-gray-600">{student.studentId} • {student.email}</div>
+                    <div className="text-sm text-gray-500">Department: {student.department}</div>
+                    {/* Display enrolled courses */}
+                    {getStudentEnrolledCourses(student._id).length > 0 && (
+                      <div className="mt-2">
+                        <div className="text-xs text-gray-500 mb-1">Enrolled Courses:</div>
+                        <div className="flex flex-wrap gap-1">
+                          {getStudentEnrolledCourses(student._id).map(course => (
+                            <span key={course._id} className="text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded">
+                              {course.name} ({course.code})
+                            </span>
+                          ))}
                         </div>
                       </div>
-                    </div>
+                    )}
                   </div>
-                  <div className="flex items-center space-x-4">
-                    {student.attendance && (
-                      <div className="text-right">
-                        <div className="text-sm font-medium">Attendance</div>
-                        <div className={`text-lg font-bold ${student.attendance.percentage >= 75 ? 'text-green-600' : 'text-red-600'}`}>
-                          {student.attendance.percentage}%
-                        </div>
-                      </div>
-                    )}
-                    {student.averageGrade && (
-                      <div className="text-right">
-                        <div className="text-sm font-medium">Grade</div>
-                        <div className="text-lg font-bold text-blue-600">{student.averageGrade}</div>
-                      </div>
-                    )}
-                    <div className="text-right">
-                      <div className="text-sm font-medium">Courses</div>
-                      <div className="text-lg font-bold text-purple-600">{student.courses?.length || 0}</div>
-                    </div>
-                   {(user?.role === 'faculty' || user?.role === 'admin') && (
-                     isStudentEnrolled(student) ? (
-                       <span className="ml-2 px-3 py-1 rounded bg-green-100 text-green-700 border border-green-300 text-xs font-semibold">Already Enrolled</span>
-                     ) : (
-                       <button
-                         onClick={() => enrollStudent(student._id)}
-                         className="bg-blue-500 text-white px-3 py-1 rounded hover:bg-blue-700 ml-2"
-                         disabled={loading || !selectedCourse}
-                       >
-                         Add
-                       </button>
-                     )
-                    )}
-                    {user?.role === 'admin' && (
+                  <div className="flex space-x-2">
+                    {!isStudentEnrolled(student) ? (
                       <button
-                        onClick={() => deleteStudent(student._id)}
-                        className="text-red-600 hover:text-red-800 px-2 py-1 border border-red-600 rounded hover:bg-red-50"
+                        onClick={() => enrollStudent(student._id)}
+                        disabled={loading}
+                        className="bg-green-600 text-white px-3 py-1 rounded text-sm hover:bg-green-700 disabled:opacity-50"
                       >
-                        Delete
+                        {loading ? 'Adding...' : 'Add to Course'}
                       </button>
+                    ) : (
+                      <span className="text-green-600 text-sm font-medium">✓ Already Enrolled</span>
                     )}
+                    <button
+                      onClick={() => deleteStudent(student._id)}
+                      className="bg-red-600 text-white px-3 py-1 rounded text-sm hover:bg-red-700"
+                    >
+                      Delete
+                    </button>
                   </div>
                 </div>
-              </div>
             ))}
           </div>
         )}

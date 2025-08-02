@@ -54,7 +54,6 @@ interface AttendanceRecord {
   percentage: number;
   status: 'good' | 'warning' | 'critical';
   lastUpdated: string;
-  requiredClasses?: number;
 }
 
 interface AcademicStats {
@@ -162,8 +161,7 @@ export function AcademicModule() {
             attendedClasses: stat.present || 0, // Map from backend 'present' field
             percentage: stat.percentage || 0,
             status: getAttendanceStatus(stat.percentage || 0),
-            lastUpdated: new Date().toISOString(),
-            requiredClasses: calculateRequiredClasses(stat.percentage || 0, stat.total || 0)
+            lastUpdated: new Date().toISOString()
           };
         });
         
@@ -244,13 +242,6 @@ export function AcademicModule() {
     if (percentage >= 85) return 'good';
     if (percentage >= 75) return 'warning';
     return 'critical';
-  };
-
-  const calculateRequiredClasses = (currentPercentage: number, totalClasses: number): number => {
-    if (currentPercentage >= 75) return 0;
-    const attendedClasses = Math.round((currentPercentage / 100) * totalClasses);
-    const requiredAttendance = 0.75;
-    return Math.ceil((requiredAttendance * totalClasses - attendedClasses) / (1 - requiredAttendance));
   };
 
   const getStatusIcon = (status: string) => {
@@ -491,11 +482,6 @@ export function AcademicModule() {
                           <span className="text-gray-600">Classes:</span>
                           <span className="text-gray-900">{record.attendedClasses}/{record.totalClasses}</span>
                         </div>
-                        {record.requiredClasses && record.requiredClasses > 0 && (
-                          <div className="text-xs text-orange-600 mt-2">
-                            Attend next {record.requiredClasses} classes to reach 75%
-                          </div>
-                        )}
                         <div className="w-full bg-gray-200 rounded-full h-2 mt-3">
                           <div
                             className={`h-2 rounded-full ${

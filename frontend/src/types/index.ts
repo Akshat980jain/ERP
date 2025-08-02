@@ -44,6 +44,68 @@ export interface CourseSchedule {
   room: string;
 }
 
+export interface ScheduleAttendanceData {
+  course: {
+    _id: string;
+    name: string;
+    code: string;
+  };
+  date: string;
+  dayOfWeek: string;
+  schedule: Array<{
+    day: string;
+    time: string;
+    room: string;
+  }>;
+  attendanceMatrix: Array<{
+    slot: {
+      day: string;
+      time: string;
+      room: string;
+    };
+    attendance: Array<{
+      student: {
+        _id: string;
+        name: string;
+        email: string;
+        studentId: string;
+      };
+      status: 'present' | 'absent' | 'late' | null;
+      markedAt: string | null;
+      isWithinSchedule: boolean;
+      remarks: string;
+    }>;
+  }>;
+}
+
+export interface ScheduleAttendanceResponse {
+  success: boolean;
+  course: {
+    _id: string;
+    name: string;
+    code: string;
+  };
+  date: string;
+  dayOfWeek: string;
+  schedule: CourseSchedule[];
+  attendanceMatrix: Array<{
+    slot: CourseSchedule;
+    attendance: Array<{
+      student: {
+        _id: string;
+        name: string;
+        email: string;
+        studentId: string;
+      };
+      status: 'present' | 'absent' | 'late' | null;
+      markedAt: string | null;
+      isWithinSchedule: boolean;
+      remarks: string;
+    }>;
+  }>;
+  message?: string;
+}
+
 export interface Attendance {
   id: string;
   studentId: string;

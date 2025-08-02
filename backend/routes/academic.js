@@ -2,6 +2,7 @@ const express = require('express');
 const Course = require('../models/Course');
 const Attendance = require('../models/Attendance');
 const Marks = require('../models/Marks');
+const User = require('../models/User'); // Added User model import
 const { auth, authorize } = require('../middleware/auth');
 
 const router = express.Router();
@@ -141,6 +142,54 @@ router.post('/attendance', auth, authorize('faculty', 'admin'), async (req, res)
   }
 });
 
+// @route   PUT /api/academic/attendance
+// @desc    Update attendance (faculty only)
+// @access  Private
+router.put('/attendance', auth, authorize('faculty', 'admin'), async (req, res) => {
+  try {
+    const { courseId, studentId, date, status, remarks } = req.body;
+    const course = await Course.findById(courseId);
+    console.log('[ATTENDANCE UPDATE] User:', req.user && req.user._id, 'Role:', req.user && req.user.role, 'Course faculty:', course && course.faculty);
+
+    // Check if the faculty owns the course or is admin
+    if (!course) {
+      return res.status(404).json({ message: 'Course not found' });
+    }
+    const isAdmin = req.user.role === 'admin';
+    if (!isAdmin && course.faculty.toString() !== req.user._id.toString()) {
+      return res.status(403).json({ message: `You are not authorized to update attendance for this course. Your user ID: ${req.user._id}, course faculty: ${course.faculty}` });
+    }
+
+    // Find existing attendance record
+    const existingAttendance = await Attendance.findOne({
+      student: studentId,
+      course: courseId,
+      date: new Date(date)
+    });
+
+    if (!existingAttendance) {
+      return res.status(404).json({ message: 'Attendance record not found for this date' });
+    }
+
+    // Update the attendance record
+    existingAttendance.status = status;
+    if (remarks !== undefined) {
+      existingAttendance.remarks = remarks;
+    }
+    existingAttendance.markedBy = req.user._id;
+
+    await existingAttendance.save();
+
+    res.json({
+      success: true,
+      attendance: existingAttendance
+    });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
 // @route   GET /api/academic/marks
 // @desc    Get marks for current user
 // @access  Private
@@ -196,6 +245,258 @@ router.post('/marks', auth, authorize('faculty'), async (req, res) => {
     res.status(201).json({
       success: true,
       marks
+    });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// @route   GET /api/academic/schedule-attendance
+// @desc    Get schedule-based attendance for a course and date
+// @access  Private
+router.get('/schedule-attendance', auth, async (req, res) => {
+  try {
+    const { courseId, date } = req.query;
+    
+    if (!courseId || !date) {
+      return res.status(400).json({ message: 'Course ID and date are required' });
+    }
+
+    const course = await Course.findById(courseId);
+    if (!course) {
+      return res.status(404).json({ message: 'Course not found' });
+    }
+
+    // Get the day of week for the given date
+    const attendanceDate = new Date(date);
+    const dayOfWeek = attendanceDate.toLocaleDateString('en-US', { weekday: 'long' });
+
+    // Get schedule slots for this day
+    const daySchedule = course.schedule.filter(slot => slot.day === dayOfWeek);
+    
+    // Get existing attendance for this date
+    const existingAttendance = await Attendance.find({
+      course: courseId,
+      date: attendanceDate
+    }).populate('student', 'name email profile.studentId');
+
+    // Get all students enrolled in this course
+    const students = await User.find({ _id: { $in: course.students } })
+      .select('name email profile.studentId');
+
+    // Create attendance matrix
+    const attendanceMatrix = daySchedule.map(slot => {
+      const slotAttendance = students.map(student => {
+        const existingRecord = existingAttendance.find(att => 
+          att.student._id.toString() === student._id.toString() &&
+          att.scheduleSlot.startTime === slot.time
+        );
+
+        return {
+          student,
+          status: existingRecord ? existingRecord.status : null,
+          markedAt: existingRecord ? existingRecord.markedAt : null,
+          isWithinSchedule: existingRecord ? existingRecord.isWithinSchedule : false,
+          remarks: existingRecord ? existingRecord.remarks : ''
+        };
+      });
+
+      return {
+        slot,
+        attendance: slotAttendance
+      };
+    });
+
+    res.json({
+      success: true,
+      course: {
+        _id: course._id,
+        name: course.name,
+        code: course.code
+      },
+      date: attendanceDate,
+      dayOfWeek,
+      schedule: daySchedule,
+      attendanceMatrix
+    });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// @route   POST /api/academic/schedule-attendance
+// @desc    Mark schedule-based attendance (faculty only)
+// @access  Private
+router.post('/schedule-attendance', auth, authorize('faculty', 'admin'), async (req, res) => {
+  try {
+    const { courseId, date, scheduleSlot, attendanceData } = req.body;
+    
+    if (!courseId || !date || !scheduleSlot || !attendanceData) {
+      return res.status(400).json({ message: 'Missing required fields' });
+    }
+
+    const course = await Course.findById(courseId);
+    if (!course) {
+      return res.status(404).json({ message: 'Course not found' });
+    }
+
+    // Check if the faculty owns the course or is admin
+    const isAdmin = req.user.role === 'admin';
+    if (!isAdmin && course.faculty.toString() !== req.user._id.toString()) {
+      return res.status(403).json({ message: 'You are not authorized to mark attendance for this course' });
+    }
+
+    // Validate that the schedule slot exists
+    const attendanceDate = new Date(date);
+    const dayOfWeek = attendanceDate.toLocaleDateString('en-US', { weekday: 'long' });
+    
+    const validSlot = course.schedule.find(slot => 
+      slot.day === dayOfWeek && 
+      slot.time === scheduleSlot.startTime
+    );
+
+    if (!validSlot) {
+      return res.status(400).json({ message: 'Invalid schedule slot for this date' });
+    }
+
+    // Check if attendance is being marked within the scheduled time window
+    const now = new Date();
+    const slotStartTime = new Date(date + 'T' + scheduleSlot.startTime);
+    const slotEndTime = new Date(date + 'T' + scheduleSlot.endTime);
+    
+    // Allow marking attendance 15 minutes before and 30 minutes after the scheduled time
+    const earlyWindow = new Date(slotStartTime.getTime() - 15 * 60 * 1000);
+    const lateWindow = new Date(slotEndTime.getTime() + 30 * 60 * 1000);
+    
+    const isWithinTimeWindow = now >= earlyWindow && now <= lateWindow;
+
+    const results = [];
+    const errors = [];
+
+    // Process each student's attendance
+    for (const record of attendanceData) {
+      try {
+        // Check if attendance already exists for this student, course, date, and time slot
+        const existingAttendance = await Attendance.findOne({
+          student: record.studentId,
+          course: courseId,
+          date: attendanceDate,
+          'scheduleSlot.day': dayOfWeek,
+          'scheduleSlot.startTime': scheduleSlot.startTime
+        });
+
+        if (existingAttendance) {
+          // Update existing record
+          existingAttendance.status = record.status;
+          existingAttendance.remarks = record.remarks || '';
+          existingAttendance.markedAt = now;
+          existingAttendance.isWithinSchedule = isWithinTimeWindow;
+          
+          await existingAttendance.save();
+          results.push({ studentId: record.studentId, status: 'updated' });
+        } else {
+          // Create new record
+          const attendance = new Attendance({
+            student: record.studentId,
+            course: courseId,
+            date: attendanceDate,
+            status: record.status,
+            markedBy: req.user._id,
+            remarks: record.remarks || '',
+            scheduleSlot: {
+              day: dayOfWeek,
+              startTime: scheduleSlot.startTime,
+              endTime: scheduleSlot.endTime,
+              room: validSlot.room || ''
+            },
+            markedAt: now,
+            isWithinSchedule: isWithinTimeWindow
+          });
+
+          await attendance.save();
+          results.push({ studentId: record.studentId, status: 'created' });
+        }
+      } catch (error) {
+        errors.push({ studentId: record.studentId, error: error.message });
+      }
+    }
+
+    if (errors.length > 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'Some attendance records failed to save',
+        results,
+        errors
+      });
+    }
+
+    res.json({
+      success: true,
+      message: 'Attendance marked successfully',
+      results,
+      isWithinTimeWindow
+    });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// @route   GET /api/academic/attendance-schedule
+// @desc    Get attendance schedule for a course
+// @access  Private
+router.get('/attendance-schedule', auth, async (req, res) => {
+  try {
+    const { courseId } = req.query;
+    
+    if (!courseId) {
+      return res.status(400).json({ message: 'Course ID is required' });
+    }
+
+    const course = await Course.findById(courseId);
+    if (!course) {
+      return res.status(404).json({ message: 'Course not found' });
+    }
+
+    // Get today's date and day of week
+    const today = new Date();
+    const todayString = today.toISOString().split('T')[0];
+    const dayOfWeek = today.toLocaleDateString('en-US', { weekday: 'long' });
+
+    // Get schedule for today
+    const todaySchedule = course.schedule.filter(slot => slot.day === dayOfWeek);
+    
+    // Get attendance for today
+    const todayAttendance = await Attendance.find({
+      course: courseId,
+      date: today
+    }).populate('student', 'name email profile.studentId');
+
+    // Create schedule with attendance status
+    const scheduleWithAttendance = todaySchedule.map(slot => {
+      const slotAttendance = todayAttendance.filter(att => 
+        att.scheduleSlot.startTime === slot.time
+      );
+
+      return {
+        ...slot,
+        attendanceCount: slotAttendance.length,
+        markedCount: slotAttendance.filter(att => att.status).length
+      };
+    });
+
+    res.json({
+      success: true,
+      course: {
+        _id: course._id,
+        name: course.name,
+        code: course.code
+      },
+      date: todayString,
+      dayOfWeek,
+      schedule: scheduleWithAttendance
     });
   } catch (error) {
     console.error(error);

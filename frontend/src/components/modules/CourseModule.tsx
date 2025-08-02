@@ -2,20 +2,19 @@
 import React, { useState, useEffect } from 'react';
 import { 
   BookOpen, 
-  Users, 
-  Calendar, 
   Plus, 
+  Search, 
+  Filter, 
   Edit, 
   Trash2, 
-  Clock,
-  MapPin,
-  GraduationCap,
-  Search,
-  Filter,
-  AlertCircle,
-  CheckCircle
+  GraduationCap, 
+  Users, 
+  Calendar, 
+  Clock, 
+  MapPin 
 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
+import apiClient from '../../utils/api';
 
 interface Course {
   _id: string;
@@ -53,7 +52,7 @@ export function CourseModule() {
     code: '',
     department: '',
     credits: 0,
-    schedule: [{ day: '', time: '', room: '' }],
+    schedule: [{ day: '', time: '', room: '' }] as { day: string; time: string; room?: string }[],
     description: '',
     semester: '',
     year: new Date().getFullYear(),
@@ -76,16 +75,15 @@ export function CourseModule() {
     setLoading(true);
     setError('');
     try {
-      const endpoint = user?.role === 'student' 
-        ? '/api/courses/my-courses' 
-        : user?.role === 'faculty' 
-        ? '/api/courses/faculty-courses' 
-        : '/api/courses';
-        
-      const res = await fetch(endpoint, {
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
-      const data = await res.json();
+      let data;
+      if (user?.role === 'student') {
+        data = await apiClient.getMyCourses() as { success: boolean; courses: Course[]; message?: string };
+      } else if (user?.role === 'faculty') {
+        data = await apiClient.getFacultyCourses() as { success: boolean; courses: Course[]; message?: string };
+      } else {
+        data = await apiClient.getCourses() as { success: boolean; courses: Course[]; message?: string };
+      }
+      
       if (data.success) {
         setCourses(data.courses);
       } else {
@@ -124,19 +122,12 @@ export function CourseModule() {
     setSuccess('');
 
     try {
-      const res = await fetch('/api/courses', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify({
-          ...newCourse,
-          faculty: user?._id,
-          status: 'active'
-        })
-      });
-      const data = await res.json();
+      const data = await apiClient.createCourse({
+        ...newCourse,
+        faculty: user?._id,
+        status: 'active'
+      }) as { success: boolean; course: Course; message?: string };
+      
       if (data.success) {
         setCourses([...courses, data.course]);
         resetForm();
@@ -160,15 +151,13 @@ export function CourseModule() {
     setSuccess('');
 
     try {
-      const res = await fetch(`/api/courses/${editingCourse._id}`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify(newCourse)
-      });
-      const data = await res.json();
+      console.log('Attempting to update course:', editingCourse._id);
+      console.log('Current user:', user);
+      console.log('Update data:', newCourse);
+      
+      const data = await apiClient.updateCourse(editingCourse._id, newCourse) as { success: boolean; course: Course; message?: string };
+      console.log('Update response:', data);
+      
       if (data.success) {
         setCourses(courses.map(course => 
           course._id === editingCourse._id ? data.course : course
@@ -180,21 +169,31 @@ export function CourseModule() {
         setError(data.message || 'Failed to update course');
       }
     } catch (err) {
+      console.error('Update course error:', err);
       setError('Failed to update course. Please try again.');
     }
     setLoading(false);
   };
 
   const deleteCourse = async (courseId: string) => {
-    if (!window.confirm('Are you sure you want to delete this course? This action cannot be undone.')) return;
+    const course = courses.find(c => c._id === courseId);
+    const hasEnrolledStudents = course?.students && course.students.length > 0;
+    
+    const confirmMessage = hasEnrolledStudents 
+      ? `Are you sure you want to delete this course? This will remove ${course.students.length} enrolled student(s) from the course. This action cannot be undone.`
+      : 'Are you sure you want to delete this course? This action cannot be undone.';
+    
+    if (!window.confirm(confirmMessage)) return;
 
     setLoading(true);
     try {
-      const res = await fetch(`/api/courses/${courseId}`, {
-        method: 'DELETE',
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
-      const data = await res.json();
+      console.log('Attempting to delete course:', courseId);
+      console.log('Current user:', user);
+      console.log('Course has enrolled students:', hasEnrolledStudents);
+      
+      const data = await apiClient.deleteCourse(courseId) as { success: boolean; message?: string };
+      console.log('Delete response:', data);
+      
       if (data.success) {
         setCourses(courses.filter(course => course._id !== courseId));
         setSuccess('Course deleted successfully!');
@@ -203,6 +202,7 @@ export function CourseModule() {
         setError(data.message || 'Failed to delete course');
       }
     } catch (err) {
+      console.error('Delete course error:', err);
       setError('Failed to delete course. Please try again.');
     }
     setLoading(false);
@@ -247,7 +247,7 @@ export function CourseModule() {
       code: '',
       department: '',
       credits: 0,
-      schedule: [{ day: '', time: '', room: '' }],
+      schedule: [{ day: '', time: '', room: '' }] as { day: string; time: string; room?: string }[],
       description: '',
       semester: '',
       year: new Date().getFullYear(),
@@ -261,7 +261,7 @@ export function CourseModule() {
   const addScheduleSlot = () => {
     setNewCourse({
       ...newCourse,
-      schedule: [...newCourse.schedule, { day: '', time: '', room: '' }]
+      schedule: [...newCourse.schedule, { day: '', time: '', room: '' }] as { day: string; time: string; room?: string }[]
     });
   };
 
@@ -326,13 +326,13 @@ export function CourseModule() {
       {/* Alerts */}
       {error && (
         <div className="flex items-center bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg">
-          <AlertCircle className="w-5 h-5 mr-2" />
+          {/* <AlertCircle className="w-5 h-5 mr-2" /> */}
           {error}
         </div>
       )}
       {success && (
         <div className="flex items-center bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded-lg">
-          <CheckCircle className="w-5 h-5 mr-2" />
+          {/* <CheckCircle className="w-5 h-5 mr-2" /> */}
           {success}
         </div>
       )}
@@ -524,9 +524,7 @@ export function CourseModule() {
               >
                 {loading ? (
                   <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
-                ) : (
-                  <CheckCircle className="w-4 h-4 mr-2" />
-                )}
+                ) : null}
                 {loading ? (editingCourse ? 'Updating...' : 'Adding...') : (editingCourse ? 'Update Course' : 'Add Course')}
               </button>
               <button
