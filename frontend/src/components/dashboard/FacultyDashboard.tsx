@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { CheckCircle, Shield } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
+import apiClient from '../../utils/api';
 
 // AddStudentPanel: visible to faculty/admin
 function AddStudentPanel() {
@@ -200,9 +201,65 @@ export function FacultyDashboard() {
     { title: 'Classes Taught', value: '0', icon: Shield, color: 'text-purple-600' },
   ];
 
+  const { user } = useAuth();
+  const [students, setStudents] = useState<Array<{ _id?: string; name: string; email: string; profile?: { studentId?: string; branch?: string; course?: string } }>>([]);
+  const [studentsError, setStudentsError] = useState('');
+  const [studentsLoading, setStudentsLoading] = useState(false);
+
+  useEffect(() => {
+    const loadStudents = async () => {
+      if (!user || (user.role !== 'faculty' && user.role !== 'admin')) return;
+      setStudentsLoading(true);
+      setStudentsError('');
+      try {
+        const data = await apiClient.request<{ success: boolean; students: any[] }>(
+          '/students'
+        );
+        if (data && (data as any).success) {
+          setStudents((data as any).students || []);
+        } else {
+          setStudentsError('Failed to load students');
+        }
+      } catch (err: any) {
+        setStudentsError(err?.message || 'Failed to load students');
+      } finally {
+        setStudentsLoading(false);
+      }
+    };
+    loadStudents();
+  }, [user]);
+
   return (
     <div className="space-y-6">
       <FacultyApprovalPanel />
+      {(user?.role === 'faculty' || user?.role === 'admin') && (
+        <div className="bg-white rounded-lg shadow p-4">
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="text-lg font-semibold">My Students</h3>
+            {studentsLoading && <span className="text-sm text-gray-500">Loading...</span>}
+          </div>
+          {studentsError && (
+            <div className="text-red-700 text-sm mb-2">{studentsError}</div>
+          )}
+          {!studentsLoading && students.length === 0 && !studentsError && (
+            <div className="text-gray-500">No students found.</div>
+          )}
+          <div className="divide-y">
+            {students.map((s) => (
+              <div key={s._id || s.email} className="py-2 flex items-center justify-between">
+                <div>
+                  <div className="font-medium">{s.name}</div>
+                  <div className="text-xs text-gray-600">{s.email}</div>
+                </div>
+                <div className="text-xs text-gray-500">
+                  {s.profile?.studentId ? `ID: ${s.profile.studentId}` : ''}
+                  {s.profile?.branch ? `${s.profile?.studentId ? ' · ' : ''}${s.profile.branch}` : ''}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         {quickStats.map((stat, index) => {
           const Icon = stat.icon;

@@ -7,49 +7,116 @@ class ApiClient {
     this.baseURL = baseURL;
   }
 
-  private getAuthHeaders(): HeadersInit {
-    const token = localStorage.getItem('educonnect_token');
+  private getAuthHeaders(token?: string): HeadersInit {
+    const authToken = token || localStorage.getItem('educonnect_token');
+    console.log('Getting auth headers, token:', authToken ? authToken.substring(0, 20) + '...' : 'No token');
     return {
       'Content-Type': 'application/json',
-      ...(token && { Authorization: `Bearer ${token}` })
+      ...(authToken && { Authorization: `Bearer ${authToken}` })
     };
   }
 
   async request<T>(
     endpoint: string,
-    options: RequestInit = {}
+    options: RequestInit = {},
+    token?: string
   ): Promise<T> {
     const url = `${this.baseURL}${endpoint}`;
     const config: RequestInit = {
-      headers: this.getAuthHeaders(),
+      headers: this.getAuthHeaders(token),
       ...options
     };
 
-    try {
-      const response = await fetch(url, config);
-      const data = await response.json();
+    // Add debugging for login requests
+    if (endpoint === '/auth/login' && options.body) {
+      console.log('Login request body:', options.body);
+    }
 
+    try {
+      console.log(`Making API Request: ${options.method || 'GET'} ${url}`);
+      console.log('Request config:', {
+        headers: config.headers,
+        method: config.method,
+        body: options.body ? 'Request body present' : 'No body'
+      });
+
+      const response = await fetch(url, config);
+      
+      // Log response details for debugging
+      console.log(`Response status: ${response.status}`);
+      console.log(`Response ok: ${response.ok}`);
+      console.log(`Response headers:`, Object.fromEntries(response.headers.entries()));
+      
+      // Check if response is ok before trying to parse JSON
       if (!response.ok) {
-        throw new Error(data.message || 'API request failed');
+        console.log(`HTTP ${response.status}: ${response.statusText}`);
+        console.log(`Content-Type: ${response.headers.get('content-type')}`);
+        
+        // Try to get the response text for debugging
+        const errorText = await response.text();
+        console.log('Raw response text:', errorText);
+        
+        let errorData;
+        try {
+          errorData = JSON.parse(errorText);
+        } catch {
+          errorData = { message: errorText };
+        }
+        
+        console.log('Parsed response data:', errorData);
+        
+        throw new Error(`HTTP ${response.status}: ${errorData.message || response.statusText}`);
       }
+
+      const data = await response.json();
+      console.log('Response data:', data);
 
       return data;
     } catch (error) {
-      console.error('API Error:', error);
+      console.error('API Error Response:', {
+        status: error instanceof Response ? error.status : 'Unknown',
+        statusText: error instanceof Response ? error.statusText : 'Unknown',
+        data: error,
+        url,
+        config
+      });
       throw error;
     }
   }
 
   // Auth endpoints
   async login(email: string, password: string) {
-    return this.request('/auth/login', {
-      method: 'POST',
-      body: JSON.stringify({ email, password })
-    });
+    try {
+      // Validate input before sending
+      if (!email || !password) {
+        throw new Error('Email and password are required');
+      }
+
+      // Trim and validate email format
+      const trimmedEmail = email.trim().toLowerCase();
+      if (!trimmedEmail.includes('@')) {
+        throw new Error('Please enter a valid email address');
+      }
+
+      const requestBody = { 
+        email: trimmedEmail, 
+        password: password 
+      };
+
+      console.log('Sending login request with:', { email: trimmedEmail, password: '***' });
+
+      return this.request('/auth/login', {
+        method: 'POST',
+        body: JSON.stringify(requestBody)
+      });
+    } catch (error) {
+      console.error('Login method error:', error);
+      throw error;
+    }
   }
 
-  async getCurrentUser() {
-    return this.request('/auth/me');
+  async getCurrentUser(token?: string) {
+    return this.request('/auth/me', {}, token);
   }
 
   async updateProfile(profileData: {
@@ -67,6 +134,60 @@ class ApiClient {
       method: 'PUT',
       body: JSON.stringify(profileData)
     });
+  }
+
+  // Admin endpoints
+  async getVerificationRequests(token?: string) {
+    return this.request('/auth/verification-requests', {}, token);
+  }
+
+  async processVerificationRequest(id: string, status: 'approved' | 'rejected', remarks: string, token?: string) {
+    return this.request(`/auth/verification-requests/${id}/decision`, {
+      method: 'POST',
+      body: JSON.stringify({ status, remarks })
+    }, token);
+  }
+
+  async getAdminsByProgram(program: string, token?: string) {
+    return this.request(`/auth/admins-by-program?program=${encodeURIComponent(program)}`, {}, token);
+  }
+
+  async getAdminStats(token?: string) {
+    return this.request('/auth/admin-stats', {}, token);
+  }
+
+  async getDepartmentEnrollment(token?: string) {
+    return this.request('/auth/department-enrollment', {}, token);
+  }
+
+  async getMonthlyRevenue(token?: string) {
+    return this.request('/auth/monthly-revenue', {}, token);
+  }
+
+  // Test server connectivity
+  async testConnection(): Promise<{ success: boolean; message: string }> {
+    try {
+      const response = await fetch(`${this.baseURL}/health`, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+
+      if (response.ok) {
+        return { success: true, message: 'Server connection successful' };
+      } else {
+        return { 
+          success: false, 
+          message: `Server responded with status: ${response.status} ${response.statusText}` 
+        };
+      }
+    } catch (error) {
+      return { 
+        success: false, 
+        message: `Connection failed: ${error instanceof Error ? error.message : 'Unknown error'}` 
+      };
+    }
   }
 
   // Notifications

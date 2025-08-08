@@ -1,29 +1,11 @@
 // src/components/auth/LoginForm.tsx
 import { useState, useCallback } from 'react';
-import { Mail, Lock, GraduationCap, Eye, EyeOff, AlertCircle, Shield } from 'lucide-react';
+import { Mail, Lock, GraduationCap, Eye, EyeOff, AlertCircle } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
-import { Button } from '../ui/Button';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { motion, AnimatePresence } from 'framer-motion';
-
-// Create a simple LoadingSpinner component inline
-const LoadingSpinner = ({ size = 'md', className = '' }: { size?: 'sm' | 'md' | 'lg'; className?: string }) => {
-  const sizes = {
-    sm: 'w-4 h-4',
-    md: 'w-6 h-6',
-    lg: 'w-8 h-8',
-  };
-
-  return (
-    <motion.div
-      animate={{ rotate: 360 }}
-      transition={{ duration: 1, repeat: Infinity, ease: 'linear' }}
-      className={`border-2 border-current border-t-transparent rounded-full ${sizes[size]} ${className}`}
-    />
-  );
-};
 
 // Create a simple Toast component inline
 const Toast = ({ 
@@ -84,7 +66,6 @@ type LoginFormData = z.infer<typeof loginSchema>;
 
 export function LoginForm() {
   const [showPassword, setShowPassword] = useState(false);
-  const [showTwoFactor, setShowTwoFactor] = useState(false);
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' | 'info' } | null>(null);
 
   // Only destructure what you actually use from useAuth
@@ -106,8 +87,6 @@ export function LoginForm() {
     },
   });
 
-  // Remove lockout logic
-
   const showToast = useCallback((message: string, type: 'success' | 'error' | 'info') => {
     setToast({ message, type });
     setTimeout(() => setToast(null), 5000);
@@ -115,20 +94,63 @@ export function LoginForm() {
 
   const onSubmit = async (data: LoginFormData) => {
     try {
-      // Simplified login without 2FA for now
+      console.log('Form submission started for email:', data.email);
+
+      // Validate form data before sending
+      if (!data.email || !data.password) {
+        showToast('Please fill in all required fields.', 'error');
+        return;
+      }
+
+      // Call login with proper error handling
       const result = await login(data.email, data.password);
 
+      console.log('Login attempt completed. Success:', result?.success);
+
+      // Handle successful login
       if (result && result.success) {
         showToast('Login successful! Welcome back.', 'success');
-        // Reset form and states
         reset();
-        setShowTwoFactor(false);
-      } else {
-        throw new Error(result?.message || 'Login failed');
+        return;
       }
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Invalid credentials. Please try again.';
+
+      // Handle login failure with specific error message
+      const errorMessage = result?.message || 'Login failed. Please check your credentials and try again.';
+      console.log('Login failed with message:', errorMessage);
       showToast(errorMessage, 'error');
+      
+      // Reset sensitive fields
+      setValue('password', '');
+      setValue('twoFactorCode', '');
+
+    } catch (error) {
+      console.error('Login form error details:', {
+        error,
+        message: error instanceof Error ? error.message : 'Unknown error',
+        stack: error instanceof Error ? error.stack : undefined
+      });
+
+      // Provide more specific error messages based on error type
+      let errorMessage = 'An unexpected error occurred. Please try again.';
+      
+      if (error instanceof Error) {
+        if (error.message.includes('Server error')) {
+          errorMessage = 'Server is currently unavailable. Please try again in a few moments.';
+        } else if (error.message.includes('Network')) {
+          errorMessage = 'Network connection error. Please check your internet connection.';
+        } else if (error.message.includes('timeout')) {
+          errorMessage = 'Request timed out. Please try again.';
+        } else if (error.message.includes('401') || error.message.includes('Unauthorized')) {
+          errorMessage = 'Invalid email or password. Please check your credentials.';
+        } else if (error.message.includes('400')) {
+          errorMessage = 'Invalid request. Please check your input and try again.';
+        } else {
+          errorMessage = error.message;
+        }
+      }
+
+      showToast(errorMessage, 'error');
+      
       // Reset sensitive fields
       setValue('password', '');
       setValue('twoFactorCode', '');
@@ -138,6 +160,27 @@ export function LoginForm() {
   const togglePasswordVisibility = useCallback(() => {
     setShowPassword(prev => !prev);
   }, []);
+
+  // Check if backend is reachable (optional diagnostic)
+  const testConnection = useCallback(async () => {
+    try {
+      const response = await fetch('http://localhost:5000/api/health', {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+      
+      if (response.ok) {
+        showToast('Server connection is working!', 'success');
+      } else {
+        showToast(`Server responded with status: ${response.status}`, 'error');
+      }
+    } catch (error) {
+      console.error('Connection test failed:', error);
+      showToast('Cannot connect to server. Please check if the server is running on port 5000.', 'error');
+    }
+  }, [showToast]);
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-100 px-2">
@@ -166,6 +209,7 @@ export function LoginForm() {
                 </div>
               )}
             </div>
+            
             <div className="space-y-2">
               <label className="block text-sm font-semibold text-gray-700">Password</label>
               <div className="relative">
@@ -192,6 +236,7 @@ export function LoginForm() {
                 </div>
               )}
             </div>
+            
             <div className="flex items-center justify-between">
               <label className="flex items-center space-x-2 cursor-pointer">
                 <input
@@ -209,9 +254,10 @@ export function LoginForm() {
                 Forgot password?
               </button>
             </div>
+            
             <button
               type="submit"
-              className="w-full bg-gradient-to-r from-blue-600 to-purple-600 text-white py-2.5 rounded-lg font-semibold text-lg shadow hover:from-blue-700 hover:to-purple-700 focus:outline-none focus:ring-2 focus:ring-blue-400 transition"
+              className="w-full bg-gradient-to-r from-blue-600 to-purple-600 text-white py-2.5 rounded-lg font-semibold text-lg shadow hover:from-blue-700 hover:to-purple-700 focus:outline-none focus:ring-2 focus:ring-blue-400 transition disabled:opacity-50 disabled:cursor-not-allowed"
               disabled={isSubmitting || isLoading}
             >
               {(isSubmitting || isLoading) ? (
@@ -223,15 +269,35 @@ export function LoginForm() {
                 'Sign In'
               )}
             </button>
-            <div className="text-center mt-4">
-              <a href="/request-verification" className="text-blue-600 hover:underline">
+            
+            <div className="text-center space-y-2">
+              <a href="/request-verification" className="block text-blue-600 hover:underline">
                 Need an account? Request verification here
               </a>
+              
+              {/* Debug button - remove in production */}
+              <button
+                type="button"
+                onClick={testConnection}
+                className="text-xs text-gray-500 hover:text-gray-700 underline"
+              >
+                Test Server Connection
+              </button>
             </div>
           </form>
+          
           {/* Toast Notifications */}
-                    </div>
-                  </div>
+          <AnimatePresence>
+            {toast && (
+              <Toast
+                message={toast.message}
+                type={toast.type}
+                onClose={() => setToast(null)}
+              />
+            )}
+          </AnimatePresence>
+        </div>
+      </div>
     </div>
   );
 }

@@ -1,11 +1,10 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { User } from '../types';
-
-const API_BASE_URL = 'http://localhost:5000/api';
+import apiClient from '../utils/api';
 
 interface AuthContextType {
   user: User | null;
-  login: (email: string, password: string) => Promise<void>;
+  login: (email: string, password: string) => Promise<{ success: boolean; message?: string }>;
   logout: () => void;
   updateUser: (userData: User) => void;
   isLoading: boolean;
@@ -29,57 +28,53 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setUser(JSON.parse(savedUser));
       // Verify token with backend
       verifyToken(savedToken);
+    } else {
+      setIsLoading(false);
     }
-    setIsLoading(false);
   }, []);
 
   const verifyToken = async (token: string) => {
     try {
-      const response = await fetch(`${API_BASE_URL}/auth/me`, {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        }
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        setUser(data.user);
-        localStorage.setItem('educonnect_user', JSON.stringify(data.user));
-      } else {
-        // Token is invalid, clear storage
-        logout();
-      }
+      const data = await apiClient.getCurrentUser(token) as { user: User };
+      setUser(data.user);
+      localStorage.setItem('educonnect_user', JSON.stringify(data.user));
     } catch (error) {
       console.error('Token verification failed:', error);
       logout();
+    } finally {
+      setIsLoading(false);
     }
   };
 
-  const login = async (email: string, password: string) => {
+  const login = async (email: string, password: string): Promise<{ success: boolean; message?: string }> => {
     setIsLoading(true);
     
     try {
-      const response = await fetch(`${API_BASE_URL}/auth/login`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({ email, password })
-      });
-
-      const data = await response.json();
-
-      if (response.ok) {
-        setUser(data.user);
-        setToken(data.token);
-        localStorage.setItem('educonnect_user', JSON.stringify(data.user));
-        localStorage.setItem('educonnect_token', data.token);
-      } else {
-        throw new Error(data.message || 'Login failed');
-      }
+      console.log('Attempting login with email:', email);
+      
+      const data = await apiClient.login(email, password) as { user: User; token: string };
+      
+      console.log('Login successful:', data);
+      
+      setUser(data.user);
+      setToken(data.token);
+      localStorage.setItem('educonnect_user', JSON.stringify(data.user));
+      localStorage.setItem('educonnect_token', data.token);
+      
+      return { success: true };
     } catch (error) {
-      throw error;
+      console.error('Login error:', error);
+      
+      let errorMessage = 'Network error. Please check your connection and try again.';
+      
+      if (error instanceof Error) {
+        errorMessage = error.message;
+      }
+      
+      return { 
+        success: false, 
+        message: errorMessage
+      };
     } finally {
       setIsLoading(false);
     }

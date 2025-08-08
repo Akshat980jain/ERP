@@ -28,10 +28,37 @@ interface Assessment {
   date: string;
 }
 
+interface Assignment {
+  _id: string;
+  title: string;
+  description: string;
+  course: {
+    _id: string;
+    name: string;
+    code: string;
+  };
+  startDate: string;
+  dueDate: string;
+  maxMarks: number;
+  status: string;
+  submissions?: Array<{
+    student: {
+      _id: string;
+      name: string;
+      studentId: string;
+    };
+    marks?: number;
+    feedback?: string;
+    status: string;
+    submittedAt: string;
+  }>;
+}
+
 export function MarksModule() {
   const { user, token } = useAuth();
   const [marks, setMarks] = useState<StudentMark[]>([]);
   const [assessments, setAssessments] = useState<Assessment[]>([]);
+  const [assignments, setAssignments] = useState<Assignment[]>([]);
   const [selectedCourse, setSelectedCourse] = useState('');
   const [selectedAssessment, setSelectedAssessment] = useState('');
   const [courses, setCourses] = useState<any[]>([]);
@@ -49,12 +76,14 @@ export function MarksModule() {
   });
 
   useEffect(() => {
+    if (!token) return;
     fetchCourses();
-  }, []);
+  }, [token]);
 
   useEffect(() => {
     if (selectedCourse) {
       fetchAssessments();
+      fetchAssignments();
     }
   }, [selectedCourse]);
 
@@ -65,6 +94,7 @@ export function MarksModule() {
   }, [selectedAssessment]);
 
   const fetchCourses = async () => {
+    if (!token) return;
     try {
       const res = await fetch('/api/courses', {
         headers: { 'Authorization': `Bearer ${token}` }
@@ -92,17 +122,57 @@ export function MarksModule() {
     }
   };
 
-  const fetchMarks = async () => {
-    setLoading(true);
+  const fetchAssignments = async () => {
     try {
-      const res = await fetch(`/api/marks?course=${selectedCourse}&assessment=${selectedAssessment}`, {
+      const res = await fetch(`/api/assignments?courseId=${selectedCourse}`, {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       const data = await res.json();
-      if (data.success) {
-        setMarks(data.marks);
+      if (data.assignments) {
+        setAssignments(data.assignments);
+      }
+    } catch {
+      setError('Failed to fetch assignments');
+    }
+  };
+
+  const fetchMarks = async () => {
+    setLoading(true);
+    try {
+      // Check if selected assessment is an assignment
+      if (selectedAssessment.startsWith('assignment-')) {
+        const assignmentId = selectedAssessment.replace('assignment-', '');
+        const res = await fetch(`/api/assignments/${assignmentId}/submissions`, {
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+        const data = await res.json();
+        if (data.assignment && data.assignment.submissions) {
+          // Convert assignment submissions to marks format
+          const assignmentMarks = data.assignment.submissions.map((submission: any) => ({
+            _id: `${assignmentId}-${submission.student._id}`,
+            student: submission.student,
+            course: selectedCourse,
+            assessment: assignmentId,
+            marks: submission.marks || 0,
+            maxMarks: data.assignment.maxMarks,
+            grade: submission.marks ? calculateGrade(submission.marks, data.assignment.maxMarks) : 'Not Graded',
+            remarks: submission.feedback || ''
+          }));
+          setMarks(assignmentMarks);
+        } else {
+          setError('Failed to fetch assignment submissions');
+        }
       } else {
-        setError(data.message || 'Failed to fetch marks');
+        // Regular assessment marks
+        const res = await fetch(`/api/marks?course=${selectedCourse}&assessment=${selectedAssessment}`, {
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+        const data = await res.json();
+        if (data.success) {
+          setMarks(data.marks);
+        } else {
+          setError(data.message || 'Failed to fetch marks');
+        }
       }
     } catch {
       setError('Failed to fetch marks');
@@ -123,32 +193,65 @@ export function MarksModule() {
 
   const updateMarks = async (markId: string, newMarks: number) => {
     try {
-      const assessment = assessments.find(a => a._id === selectedAssessment);
-      if (!assessment) return;
+      // Check if this is an assignment mark
+      if (selectedAssessment.startsWith('assignment-')) {
+        const assignmentId = selectedAssessment.replace('assignment-', '');
+        const studentId = markId.split('-')[1]; // Extract student ID from markId
+        
+        const res = await fetch(`/api/assignments/${assignmentId}/grade/${studentId}`, {
+          method: 'PATCH',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+          },
+          body: JSON.stringify({ 
+            marks: newMarks, 
+            feedback: `Grade: ${newMarks}/${marks.find(m => m._id === markId)?.maxMarks || 100}` 
+          })
+        });
 
-      const grade = calculateGrade(newMarks, assessment.maxMarks);
-      
-      const res = await fetch(`/api/marks/${markId}`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify({ marks: newMarks, grade })
-      });
-
-      const data = await res.json();
-      if (data.success) {
-        setMarks(marks.map(mark => 
-          mark._id === markId 
-            ? { ...mark, marks: newMarks, grade }
-            : mark
-        ));
-        setSuccess('Marks updated successfully!');
-        setEditingMark(null);
-        setTempMarks({});
+        const data = await res.json();
+        if (data.success) {
+          setMarks(marks.map(mark => 
+            mark._id === markId 
+              ? { ...mark, marks: newMarks, grade: calculateGrade(newMarks, mark.maxMarks) }
+              : mark
+          ));
+          setSuccess('Assignment graded successfully!');
+          setEditingMark(null);
+          setTempMarks({});
+        } else {
+          setError(data.message || 'Failed to grade assignment');
+        }
       } else {
-        setError(data.message || 'Failed to update marks');
+        // Regular assessment marks
+        const assessment = assessments.find(a => a._id === selectedAssessment);
+        if (!assessment) return;
+
+        const grade = calculateGrade(newMarks, assessment.maxMarks);
+        
+        const res = await fetch(`/api/marks/${markId}`, {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+          },
+          body: JSON.stringify({ marks: newMarks, grade })
+        });
+
+        const data = await res.json();
+        if (data.success) {
+          setMarks(marks.map(mark => 
+            mark._id === markId 
+              ? { ...mark, marks: newMarks, grade }
+              : mark
+          ));
+          setSuccess('Marks updated successfully!');
+          setEditingMark(null);
+          setTempMarks({});
+        } else {
+          setError(data.message || 'Failed to update marks');
+        }
       }
     } catch {
       setError('Failed to update marks');
@@ -379,9 +482,16 @@ export function MarksModule() {
               disabled={!selectedCourse}
             >
               <option value="">Choose an assessment</option>
+              {/* Regular Assessments */}
               {assessments.map(assessment => (
                 <option key={assessment._id} value={assessment._id}>
                   {assessment.name} ({assessment.type}) - {assessment.maxMarks} marks
+                </option>
+              ))}
+              {/* Assignments */}
+              {assignments.map(assignment => (
+                <option key={`assignment-${assignment._id}`} value={`assignment-${assignment._id}`}>
+                  📝 {assignment.title} (Assignment) - {assignment.maxMarks} marks
                 </option>
               ))}
             </select>
@@ -589,10 +699,11 @@ export function MarksModule() {
           </>
         )}
 
-        {selectedCourse && assessments.length > 0 && user?.role !== 'student' && (
+        {selectedCourse && (assessments.length > 0 || assignments.length > 0) && user?.role !== 'student' && (
           <div className="mt-6">
             <h3 className="text-lg font-semibold mb-4">Assessment Management</h3>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {/* Regular Assessments */}
               {assessments.map(assessment => (
                 <div key={assessment._id} className="border rounded-lg p-4 hover:shadow-md transition-shadow">
                   <div className="flex justify-between items-start mb-2">
@@ -608,6 +719,25 @@ export function MarksModule() {
                     <div>Type: <span className="capitalize">{assessment.type}</span></div>
                     <div>Max Marks: {assessment.maxMarks}</div>
                     <div>Date: {new Date(assessment.date).toLocaleDateString()}</div>
+                  </div>
+                </div>
+              ))}
+              
+              {/* Assignments */}
+              {assignments.map(assignment => (
+                <div key={`assignment-${assignment._id}`} className="border rounded-lg p-4 hover:shadow-md transition-shadow bg-blue-50">
+                  <div className="flex justify-between items-start mb-2">
+                    <h4 className="font-medium">📝 {assignment.title}</h4>
+                    <span className="text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded">Assignment</span>
+                  </div>
+                  <div className="text-sm text-gray-600 space-y-1">
+                    <div>Course: {assignment.course.name}</div>
+                    <div>Max Marks: {assignment.maxMarks}</div>
+                    <div>Due: {new Date(assignment.dueDate).toLocaleDateString()}</div>
+                    <div>Status: <span className="capitalize">{assignment.status}</span></div>
+                    {assignment.submissions && (
+                      <div>Submissions: {assignment.submissions.length}</div>
+                    )}
                   </div>
                 </div>
               ))}

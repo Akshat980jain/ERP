@@ -21,11 +21,13 @@ import { LibraryModule } from './components/modules/LibraryModule';
 import { PlacementModule } from './components/modules/PlacementModule';
 import { ProfileModule } from './components/modules/ProfileModule';
 import { StudentServices } from './components/modules/StudentServices';
+import { AssignmentModule } from './components/modules/AssignmentModule';
 
 function AppContent() {
   const { user, isLoading } = useAuth();
   const [activeTab, setActiveTab] = useState('dashboard');
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const unreadNotificationCount = 5;
   
   const handleNotificationClick = () => {
@@ -53,21 +55,24 @@ function AppContent() {
       <Route path="/*" element={
         !user ? <LoginForm /> : (
           <div className="min-h-screen bg-gray-100 flex">
-            {/* Fixed Sidebar */}
-            <div className="fixed left-0 top-0 h-full z-30">
-              <Sidebar 
-                activeTab={activeTab} 
-                onTabChange={setActiveTab} 
-                collapsed={sidebarCollapsed}
-                onCollapseChange={handleSidebarCollapse}
-              />
+            {/* Sidebar */}
+            <div className={mobileMenuOpen ? 'block md:block' : 'hidden md:block'}>
+              <div className="fixed left-0 top-0 h-full z-40 md:z-30">
+                <Sidebar 
+                  activeTab={activeTab} 
+                  onTabChange={(tab) => { setActiveTab(tab); setMobileMenuOpen(false); }} 
+                  collapsed={sidebarCollapsed}
+                  onCollapseChange={handleSidebarCollapse}
+                />
+              </div>
             </div>
             
             {/* Main Content Area with dynamic left margin */}
-            <div className={`flex-1 flex flex-col transition-all duration-300 ${sidebarCollapsed ? 'ml-20' : 'ml-80'}`}>
+            <div className={`flex-1 flex flex-col transition-all duration-300 ${sidebarCollapsed ? 'md:ml-20' : 'md:ml-80'} ml-0`}>
               <Header 
                 onNotificationClick={handleNotificationClick}
                 unreadCount={unreadNotificationCount}
+                onMenuClick={() => setMobileMenuOpen(true)}
               />
               <main className="flex-1 p-6 overflow-y-auto">
                 {(() => {
@@ -95,6 +100,8 @@ function AppContent() {
                       return <StudentModule />;
                     case 'schedule': // Faculty only
                       return <ScheduleModule />;
+                    case 'assignments': // Faculty and Students
+                      return <AssignmentModule />;
                     case 'notifications':
                       return <NotificationModule />;
                     case 'finance':

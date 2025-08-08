@@ -138,6 +138,17 @@ export function Sidebar({
               priority: 'high',
             },
             { 
+              id: 'assignments', 
+              label: 'Assignments', 
+              icon: FileText,
+              category: 'academics',
+              description: 'Submit and track assignments',
+              color: 'orange',
+              priority: 'high',
+              badge: 'New',
+              badgeType: 'info'
+            },
+            { 
               id: 'finance', 
               label: 'Finance', 
               icon: CreditCard,
@@ -187,6 +198,17 @@ export function Sidebar({
               gradient: true,
               badge: 4,
               badgeType: 'info'
+            },
+            { 
+              id: 'assignments', 
+              label: 'Assignments', 
+              icon: FileText,
+              category: 'teaching',
+              description: 'Create and grade assignments',
+              color: 'orange',
+              priority: 'high',
+              badge: 'Active',
+              badgeType: 'success'
             },
             { 
               id: 'attendance', 
@@ -580,13 +602,14 @@ export function Sidebar({
 
   return (
     <>
-      {/* Updated: Removed fixed positioning, now handled by parent container */}
+      {/* Responsive sidebar container */}
       <div className={clsx(
         'h-full bg-white border-r border-gray-200 flex flex-col transition-all duration-300 shadow-xl',
         'backdrop-blur-sm bg-white/95',
+        'md:static md:translate-x-0 fixed top-0 left-0 z-40',
         {
           'w-80': !collapsed,
-          'w-20': collapsed
+          'w-20': collapsed,
         }
       )}>
         {/* Enhanced Header - Fixed height */}

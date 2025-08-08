@@ -1,11 +1,37 @@
 import React, { useEffect, useState } from 'react';
-import { Calendar, BookOpen, CreditCard, Trophy, FileText, Clock } from 'lucide-react';
+import { Calendar, BookOpen, CreditCard, Trophy, FileText, Clock, CheckCircle, AlertCircle, Clock as ClockIcon } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardContent } from '../ui/Card';
 import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { useAuth } from '../../contexts/AuthContext';
 import apiClient from '../../utils/api';
 import { Attendance, Marks, BookIssue } from '../../types';
 import { Course } from '../../types';
+
+interface Assignment {
+  _id: string;
+  title: string;
+  description: string;
+  course: {
+    _id: string;
+    name: string;
+    code: string;
+  };
+  startDate: string;
+  dueDate: string;
+  maxMarks: number;
+  status: string;
+  submissions?: Array<{
+    student: {
+      _id: string;
+      name: string;
+      studentId: string;
+    };
+    marks?: number;
+    feedback?: string;
+    status: string;
+    submittedAt: string;
+  }>;
+}
 
 export function StudentDashboard() {
   const { user } = useAuth();
@@ -19,6 +45,9 @@ export function StudentDashboard() {
   const [courses, setCourses] = useState<Course[]>([]);
   const [coursesLoading, setCoursesLoading] = useState(true);
   const [coursesError, setCoursesError] = useState('');
+  const [assignments, setAssignments] = useState<Assignment[]>([]);
+  const [assignmentsLoading, setAssignmentsLoading] = useState(true);
+  const [assignmentsError, setAssignmentsError] = useState('');
 
   useEffect(() => {
     async function fetchData() {
@@ -84,6 +113,25 @@ export function StudentDashboard() {
           setCourses([]);
         }
         setCoursesLoading(false);
+
+        // Fetch assignments
+        setAssignmentsLoading(true);
+        setAssignmentsError('');
+        try {
+          const assignmentsRes = await fetch('/api/assignments', {
+            headers: { 'Authorization': `Bearer ${token}` }
+          });
+          const assignmentsData = await assignmentsRes.json();
+          if (assignmentsData.assignments) {
+            setAssignments(assignmentsData.assignments);
+          } else {
+            setAssignments([]);
+          }
+        } catch {
+          setAssignmentsError('Failed to load assignments.');
+          setAssignments([]);
+        }
+        setAssignmentsLoading(false);
       } catch (e) {
         // handle error
       }
@@ -95,7 +143,12 @@ export function StudentDashboard() {
   const quickStats = [
     { title: 'Overall Attendance', value: loading ? '...' : (attendanceStats.percentage > 0 ? attendanceStats.percentage + '%' : 'N/A'), icon: Clock, color: 'text-green-600' },
     { title: 'CGPA', value: loading ? '...' : cgpa, icon: Trophy, color: 'text-blue-600' },
-    { title: 'Pending Fees', value: loading ? '...' : pendingFees, icon: CreditCard, color: 'text-green-600' },
+    { title: 'Active Assignments', value: loading ? '...' : assignments.filter(a => {
+      const now = new Date();
+      const startDate = new Date(a.startDate);
+      const dueDate = new Date(a.dueDate);
+      return now >= startDate && now <= dueDate;
+    }).length.toString(), icon: FileText, color: 'text-orange-600' },
     { title: 'Library Books', value: loading ? '...' : libraryBooks.toString(), icon: BookOpen, color: 'text-purple-600' },
   ];
 
@@ -103,6 +156,31 @@ export function StudentDashboard() {
     { name: 'Present', value: attendanceStats.present, color: '#10B981' },
     { name: 'Absent', value: attendanceStats.absent, color: '#EF4444' },
   ];
+
+  const getAssignmentStatus = (assignment: Assignment) => {
+    const now = new Date();
+    const dueDate = new Date(assignment.dueDate);
+    const startDate = new Date(assignment.startDate);
+    
+    // Check if student has submitted
+    const hasSubmitted = assignment.submissions?.some(sub => 
+      sub.student._id === user?._id && sub.status === 'submitted'
+    );
+    
+    if (hasSubmitted) {
+      return { status: 'submitted', icon: CheckCircle, color: 'text-green-600', bgColor: 'bg-green-50' };
+    }
+    
+    if (now < startDate) {
+      return { status: 'not-started', icon: ClockIcon, color: 'text-gray-600', bgColor: 'bg-gray-50' };
+    }
+    
+    if (now > dueDate) {
+      return { status: 'overdue', icon: AlertCircle, color: 'text-red-600', bgColor: 'bg-red-50' };
+    }
+    
+    return { status: 'active', icon: ClockIcon, color: 'text-yellow-600', bgColor: 'bg-yellow-50' };
+  };
 
   return (
     <div className="space-y-6">
@@ -217,8 +295,8 @@ export function StudentDashboard() {
             <div className="grid grid-cols-2 gap-4">
               <button className="p-4 text-left bg-blue-50 hover:bg-blue-100 rounded-lg transition-colors">
                 <FileText className="w-6 h-6 text-blue-600 mb-2" />
-                <p className="font-medium text-gray-900">Apply for Certificate</p>
-                <p className="text-sm text-gray-500">Bonafide, No Dues</p>
+                <p className="font-medium text-gray-900">View Assignments</p>
+                <p className="text-sm text-gray-500">Submit & Track</p>
               </button>
               <button className="p-4 text-left bg-green-50 hover:bg-green-100 rounded-lg transition-colors">
                 <CreditCard className="w-6 h-6 text-green-600 mb-2" />
@@ -263,6 +341,61 @@ export function StudentDashboard() {
                 </li>
               ))}
             </ul>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Assignments Section */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Recent Assignments</CardTitle>
+        </CardHeader>
+        <CardContent>
+          {assignmentsLoading ? (
+            <div className="text-gray-500">Loading assignments...</div>
+          ) : assignmentsError ? (
+            <div className="text-red-500">{assignmentsError}</div>
+          ) : assignments.length === 0 ? (
+            <div className="text-gray-500">No assignments found.</div>
+          ) : (
+            <div className="space-y-4">
+              {assignments.slice(0, 5).map((assignment) => {
+                const statusInfo = getAssignmentStatus(assignment);
+                const StatusIcon = statusInfo.icon;
+                
+                return (
+                  <div key={assignment._id} className={`p-4 rounded-lg border ${statusInfo.bgColor}`}>
+                    <div className="flex items-start justify-between">
+                      <div className="flex-1">
+                        <div className="flex items-center space-x-2 mb-2">
+                          <FileText className="w-4 h-4 text-gray-600" />
+                          <h3 className="font-medium text-gray-900">{assignment.title}</h3>
+                          <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${statusInfo.color} bg-white`}>
+                            <StatusIcon className="w-3 h-3 mr-1" />
+                            {statusInfo.status === 'submitted' ? 'Submitted' :
+                             statusInfo.status === 'overdue' ? 'Overdue' :
+                             statusInfo.status === 'active' ? 'Active' : 'Not Started'}
+                          </span>
+                        </div>
+                        <p className="text-sm text-gray-600 mb-2">{assignment.description}</p>
+                        <div className="flex items-center space-x-4 text-xs text-gray-500">
+                          <span>Course: {assignment.course.name}</span>
+                          <span>Due: {new Date(assignment.dueDate).toLocaleDateString()}</span>
+                          <span>Max Marks: {assignment.maxMarks}</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+              {assignments.length > 5 && (
+                <div className="text-center pt-4">
+                  <button className="text-blue-600 hover:text-blue-800 text-sm font-medium">
+                    View All Assignments →
+                  </button>
+                </div>
+              )}
+            </div>
           )}
         </CardContent>
       </Card>

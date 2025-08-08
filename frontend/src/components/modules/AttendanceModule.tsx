@@ -57,8 +57,9 @@ export function AttendanceModule() {
   }, []);
 
   useEffect(() => {
+    if (!token) return;
     fetchCourses();
-  }, []);
+  }, [token]);
 
   useEffect(() => {
     if (selectedCourse && selectedDate) {
@@ -67,6 +68,7 @@ export function AttendanceModule() {
   }, [selectedCourse, selectedDate]);
 
   const fetchCourses = async () => {
+    if (!token) return;
     try {
       const res = await fetch('/api/courses', {
         headers: { 'Authorization': `Bearer ${token}` }
@@ -292,12 +294,12 @@ export function AttendanceModule() {
                           {!isWithinWindow && (
                             <div className="flex items-center text-orange-600 text-sm">
                               <AlertTriangle className="w-4 h-4 mr-1" />
-                              Outside time window
+                              Outside scheduled time window (updates still allowed)
                             </div>
                           )}
                           <button
                             onClick={() => submitAttendance(slotIndex)}
-                            disabled={loading || !isWithinWindow}
+                            disabled={loading}
                             className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
                           >
                             {loading ? 'Submitting...' : 'Submit Attendance'}

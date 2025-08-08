@@ -9,7 +9,8 @@ router.get('/', auth, async (req, res) => {
     if (req.user.role !== 'admin' && req.user.role !== 'faculty') {
       return res.status(403).json({ success: false, message: 'Access denied' });
     }
-    const students = await User.find({ role: 'student' }).select('name email profile studentId department');
+    const students = await User.find({ role: 'student' })
+      .select('name email profile department branch createdAt');
     res.json({ success: true, students });
   } catch (error) {
     console.error('Error fetching students:', error);

@@ -50,9 +50,10 @@ export function StudentModule() {
   const [enrolledCourses, setEnrolledCourses] = useState<{ [studentId: string]: Course[] }>({});
 
   useEffect(() => {
+    if (!token) return;
     fetchStudents();
     fetchCourses();
-  }, []);
+  }, [token]);
 
   useEffect(() => {
     const safeStudents = Array.isArray(students) ? students : [];

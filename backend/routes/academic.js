@@ -168,7 +168,17 @@ router.put('/attendance', auth, authorize('faculty', 'admin'), async (req, res) 
     });
 
     if (!existingAttendance) {
-      return res.status(404).json({ message: 'Attendance record not found for this date' });
+      // If no record exists, create one to allow updates anytime
+      const attendance = new Attendance({
+        student: studentId,
+        course: courseId,
+        date: new Date(date),
+        status,
+        markedBy: req.user._id,
+        remarks
+      });
+      await attendance.save();
+      return res.json({ success: true, attendance });
     }
 
     // Update the attendance record

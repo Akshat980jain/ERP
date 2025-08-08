@@ -1,7 +1,7 @@
 const mongoose = require('mongoose');
 
 // MongoDB connection
-const MONGODB_URI = process.env.MONGODB_URI || 'mongodb+srv://akshat980jain:gg81I8BnmGzUSl6P@cluster0.gtqycfa.mongodb.net/test?retryWrites=true&w=majority&appName=Cluster0';
+const MONGODB_URI = process.env.MONGODB_URI || 'mongodb+srv://akshat980jain:gg81I8BnmGzUSl6P@cluster0.gtqycfa.mongodb.net/erp?retryWrites=true&w=majority&appName=Cluster0';
 
 // Course Schema - flexible to match your existing structure
 const courseSchema = new mongoose.Schema({

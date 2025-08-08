@@ -8,30 +8,37 @@ const { auth } = require('../middleware/auth'); // Adjust path as needed
 // GET all courses (Admin access or filtered by role)
 router.get('/', auth, async (req, res) => {
   try {
+    console.log('GET /courses - User:', { id: req.user._id, role: req.user.role, email: req.user.email });
+    
     let courses;
     
     switch (req.user.role) {
       case 'admin':
         // Admin can see all courses
+        console.log('Fetching all courses for admin');
         courses = await Course.find()
           .populate('faculty', 'name email')
           .populate('students', 'name email');
         break;
       case 'faculty':
         // Faculty can see courses they teach
+        console.log('Fetching courses for faculty:', req.user._id);
         courses = await Course.find({ faculty: req.user._id })
           .populate('faculty', 'name email')
           .populate('students', 'name email');
         break;
       case 'student':
         // Students can see courses they're enrolled in
+        console.log('Fetching enrolled courses for student:', req.user._id);
         courses = await Course.find({ students: req.user._id })
           .populate('faculty', 'name email');
         break;
       default:
+        console.log('Unknown role:', req.user.role);
         courses = [];
     }
     
+    console.log(`Found ${courses.length} courses for user ${req.user.role}`);
     res.json({ success: true, courses });
   } catch (error) {
     console.error('Error fetching courses:', error);

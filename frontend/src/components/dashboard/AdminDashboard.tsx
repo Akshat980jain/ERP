@@ -4,6 +4,7 @@ import { Card, CardHeader, CardTitle, CardContent } from '../ui/Card';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line } from 'recharts';
 import { useAuth } from '../../contexts/AuthContext';
 import { User as AppUser } from '../../types';
+import apiClient from '../../utils/api';
 
 // Types
 interface RequestUser {
@@ -51,13 +52,10 @@ function AdminVerificationPanel() {
     setLoading(true);
     setError('');
     try {
-      const res = await fetch('/api/auth/verification-requests', {
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
-      const data = await res.json();
+      const data = await apiClient.getVerificationRequests(token || undefined) as { success: boolean; requests: VerificationRequest[]; message?: string };
       if (data.success) {
         let filtered = data.requests;
-        if (isProgramAdmin(user)) {
+        if (user && isProgramAdmin(user)) {
           // Program admin: only see requests for faculty for their program
           filtered = filtered.filter((req: VerificationRequest) =>
             req.requestedRole === 'faculty' &&
@@ -68,7 +66,8 @@ function AdminVerificationPanel() {
       } else {
         setError(data.message || 'Failed to fetch requests');
       }
-    } catch {
+    } catch (error) {
+      console.error('Failed to fetch requests:', error);
       setError('Failed to fetch requests');
     }
     setLoading(false);
@@ -79,15 +78,7 @@ function AdminVerificationPanel() {
     setSuccess('');
     const remarks = remarksMap[id] || '';
     try {
-      const res = await fetch(`/api/auth/verification-requests/${id}/decision`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify({ status, remarks })
-      });
-      const data = await res.json();
+      const data = await apiClient.processVerificationRequest(id, status, remarks, token || undefined) as { success: boolean; message?: string };
       if (data.success) {
         setSuccess('Request processed!');
         setRequests(requests.filter(r => r._id !== id));
@@ -96,7 +87,8 @@ function AdminVerificationPanel() {
         console.error('Decision error:', data);
         setError(data.message || 'Failed to process request');
       }
-    } catch {
+    } catch (error) {
+      console.error('Failed to process request:', error);
       setError('Failed to process request');
     }
   };
@@ -181,12 +173,9 @@ function ProgramAdminsPanel() {
     setLoading(true);
     setError('');
     try {
-      const res = await fetch(`/api/auth/admins-by-program?program=${encodeURIComponent(program)}`, {
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
-      const data = await res.json();
-      if (data.success) setAdmins(data.admins);
-      else setError(data.message || 'Failed to fetch admins');
+      const res = await apiClient.getAdminsByProgram(program, token || undefined) as { success: boolean; admins: AppUser[]; message?: string };
+      if (res.success) setAdmins(res.admins);
+      else setError(res.message || 'Failed to fetch admins');
     } catch {
       setError('Failed to fetch admins');
     }
@@ -241,19 +230,16 @@ export function AdminDashboard() {
       setError('');
       try {
         const [statsRes, deptRes, revRes] = await Promise.all([
-          fetch('/api/auth/admin-stats', { headers: { 'Authorization': `Bearer ${token}` } }),
-          fetch('/api/auth/department-enrollment', { headers: { 'Authorization': `Bearer ${token}` } }),
-          fetch('/api/auth/monthly-revenue', { headers: { 'Authorization': `Bearer ${token}` } })
+          apiClient.getAdminStats(token || undefined) as Promise<{ success: boolean; stats: any; message?: string }>,
+          apiClient.getDepartmentEnrollment(token || undefined) as Promise<{ success: boolean; departments: any[]; message?: string }>,
+          apiClient.getMonthlyRevenue(token || undefined) as Promise<{ success: boolean; revenue: any[]; message?: string }>
         ]);
-        const statsData = await statsRes.json();
-        const deptData = await deptRes.json();
-        const revData = await revRes.json();
-        if (statsData.success) setStats(statsData.stats);
-        else setError(statsData.message || 'Failed to fetch stats');
-        if (deptData.success) setDepartmentData(deptData.departments);
-        else setError(deptData.message || 'Failed to fetch department data');
-        if (revData.success) setRevenueData(revData.revenue);
-        else setError(revData.message || 'Failed to fetch revenue data');
+        if (statsRes.success) setStats(statsRes.stats);
+        else setError(statsRes.message || 'Failed to fetch stats');
+        if (deptRes.success) setDepartmentData(deptRes.departments);
+        else setError(deptRes.message || 'Failed to fetch department data');
+        if (revRes.success) setRevenueData(revRes.revenue);
+        else setError(revRes.message || 'Failed to fetch revenue data');
       } catch {
         setError('Failed to fetch dashboard data');
       }
