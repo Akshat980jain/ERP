@@ -19,8 +19,13 @@ const userSchema = new mongoose.Schema({
   },
   role: {
     type: String,
-    enum: ['student', 'admin', 'faculty', 'library', 'placement', 'pending'],
+    enum: ['student', 'admin', 'faculty', 'library', 'placement', 'parent', 'pending'],
     default: 'student'
+  },
+  // Academic program/course of the user (e.g., B.Tech, M.Tech, B.Pharma, MCA, MBA)
+  program: {
+    type: String,
+    enum: ['B.Tech', 'M.Tech', 'B.Pharma', 'MCA', 'MBA'],
   },
   branch: {
     type: String,
@@ -71,6 +76,12 @@ const userSchema = new mongoose.Schema({
     type: String,
     enum: ['B.Tech', 'M.Tech', 'B.Pharma', 'MCA', 'MBA']
   }]
+});
+
+// Optional relations for parent/student linkage
+userSchema.add({
+  parents: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
+  children: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }]
 });
 
 // Password hashing middleware

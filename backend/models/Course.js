@@ -36,7 +36,13 @@ const courseSchema = new mongoose.Schema({
   schedule: [{
     day: String,
     time: String,
-    room: String
+    endTime: String,
+    room: String,
+    type: {
+      type: String,
+      enum: ['lecture', 'lab', 'tutorial', 'seminar'],
+      default: 'lecture'
+    }
   }],
   description: {
     type: String,

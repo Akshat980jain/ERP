@@ -5,6 +5,55 @@ const { auth, authorize, checkVerification } = require('../middleware/auth');
 
 const router = express.Router();
 
+// GPS trace ingest (Admin/Driver)
+router.post('/routes/:routeId/gps', auth, authorize('admin'), async (req, res) => {
+  try {
+    const { routeId } = req.params;
+    const { latitude, longitude, timestamp } = req.body;
+    const route = await Transport.findById(routeId);
+    if (!route) return res.status(404).json({ message: 'Route not found' });
+    // Lightweight: attach last known location
+    route.lastLocation = { latitude, longitude, timestamp: timestamp ? new Date(timestamp) : new Date() };
+    await route.save();
+    res.json({ success: true });
+  } catch (error) {
+    console.error('GPS ingest error:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// Live ETA per stop (basic straight-line + avg speed)
+router.get('/routes/:routeId/eta', auth, checkVerification, async (req, res) => {
+  try {
+    const { routeId } = req.params;
+    const avgSpeedKmph = Number(process.env.BUS_AVG_SPEED_KMPH || 25);
+    const route = await Transport.findById(routeId);
+    if (!route || !route.lastLocation) return res.json({ eta: [] });
+
+    const { latitude: curLat, longitude: curLng } = route.lastLocation;
+    const toRad = (d) => d * Math.PI / 180;
+    const haversineKm = (lat1, lon1, lat2, lon2) => {
+      const R = 6371;
+      const dLat = toRad(lat2 - lat1);
+      const dLon = toRad(lon2 - lon1);
+      const a = Math.sin(dLat/2) ** 2 + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon/2) ** 2;
+      return 2 * R * Math.asin(Math.sqrt(a));
+    };
+
+    const eta = route.stops.map(stop => {
+      if (!stop.coordinates?.latitude || !stop.coordinates?.longitude) return { stop: stop.name, etaMinutes: null };
+      const km = haversineKm(curLat, curLng, stop.coordinates.latitude, stop.coordinates.longitude);
+      const minutes = Math.round((km / avgSpeedKmph) * 60);
+      return { stop: stop.name, etaMinutes: minutes };
+    });
+
+    res.json({ routeId, eta });
+  } catch (error) {
+    console.error('ETA error:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
 // Get all routes
 router.get('/routes', auth, checkVerification, async (req, res) => {
   try {

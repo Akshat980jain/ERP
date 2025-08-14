@@ -236,12 +236,14 @@ class ApiClient {
     schedule: Array<{
       day: string;
       time: string;
+      endTime?: string;
       room: string;
     }>;
     attendanceMatrix: Array<{
       slot: {
         day: string;
         time: string;
+        endTime?: string;
         room: string;
       };
       attendance: Array<{
@@ -355,6 +357,72 @@ class ApiClient {
     return this.request(`/academic/marks${queryString}`);
   }
 
+  // Exams
+  async listExams() {
+    return this.request('/exams');
+  }
+  async createExam(payload: any) {
+    return this.request('/exams', { method: 'POST', body: JSON.stringify(payload) });
+  }
+  async getExam(examId: string) {
+    return this.request(`/exams/${examId}`);
+  }
+  async startExam(examId: string) {
+    return this.request(`/exams/${examId}/start`, { method: 'POST' });
+  }
+  async submitExam(examId: string, payload: { answers: any[]; meta?: any }) {
+    return this.request(`/exams/${examId}/submit`, { method: 'POST', body: JSON.stringify(payload) });
+  }
+  async heartbeatExam(examId: string, payload: { visibility: boolean; fullscreen: boolean }) {
+    return this.request(`/exams/${examId}/heartbeat`, { method: 'POST', body: JSON.stringify(payload) });
+  }
+
+  async updateExam(examId: string, payload: any) {
+    return this.request(`/exams/${examId}`, { method: 'PUT', body: JSON.stringify(payload) });
+  }
+
+  async listExamAttempts(examId: string) {
+    return this.request(`/exams/${examId}/attempts`);
+  }
+
+  async gradeExamAttempt(examId: string, studentId: string, payload: { manualMarks: Array<{ questionIndex: number; marksAwarded: number; comment?: string }>; feedback?: string; }) {
+    return this.request(`/exams/${examId}/grade/${studentId}`, { method: 'POST', body: JSON.stringify(payload) });
+  }
+
+  async listMyExamAttempts() {
+    return this.request('/exams/my-attempts');
+  }
+
+  async deleteExam(examId: string) {
+    return this.request(`/exams/${examId}`, { method: 'DELETE' });
+  }
+
+  // Feedback
+  async submitFeedback(payload: any) {
+    return this.request('/feedback', { method: 'POST', body: JSON.stringify(payload) });
+  }
+  async getFeedbackSummary(params?: { courseId?: string; semester?: number; academicYear?: string }) {
+    const qs = params ? `?${new URLSearchParams(Object.fromEntries(Object.entries(params).filter(([_,v]) => v!==undefined && v!==null).map(([k,v]) => [k, String(v)]))).toString()}` : '';
+    return this.request(`/feedback/summary${qs}`);
+  }
+
+  // Academic Calendar
+  async getAcademicCalendar() {
+    return this.request('/calendar');
+  }
+
+  async createCalendar(payload: any) {
+    return this.request('/calendar', { method: 'POST', body: JSON.stringify(payload) });
+  }
+
+  async updateCalendar(calendarId: string, payload: any) {
+    return this.request(`/calendar/${calendarId}`, { method: 'PUT', body: JSON.stringify(payload) });
+  }
+
+  async deleteCalendar(calendarId: string) {
+    return this.request(`/calendar/${calendarId}`, { method: 'DELETE' });
+  }
+
   // Library
   async getBooks(params?: { search?: string; category?: string; searchType?: string }) {
     const queryString = params ? `?${new URLSearchParams(params).toString()}` : '';
@@ -437,6 +505,72 @@ class ApiClient {
     return this.request(`/schedule/${id}`, {
       method: 'DELETE',
       body: JSON.stringify(scheduleData)
+    });
+  }
+
+  // Students
+  async getStudents(params?: { courseId?: string }) {
+    if (params?.courseId) {
+      return this.request(`/students/course/${params.courseId}`);
+    }
+    return this.request('/students');
+  }
+
+  // Transport
+  async listTransportRoutes() {
+    return this.request('/transport/routes');
+  }
+  async subscribeTransportRoute(routeId: string, stop: string) {
+    return this.request(`/transport/routes/${routeId}/subscribe`, { method: 'POST', body: JSON.stringify({ stop }) });
+  }
+  async getRouteEta(routeId: string) {
+    return this.request(`/transport/routes/${routeId}/eta`);
+  }
+
+  // Hostel
+  async listHostels() {
+    return this.request('/hostel');
+  }
+  async allocateHostel(hostelId: string, roomNumber: string, studentId: string) {
+    return this.request(`/hostel/${hostelId}/allocate`, { method: 'POST', body: JSON.stringify({ roomNumber, studentId }) });
+  }
+  async logVisitor(hostelId: string, payload: { student: string; name: string; relation?: string; checkIn: string; checkOut?: string; idProof?: string; }) {
+    return this.request(`/hostel/${hostelId}/visitor`, { method: 'POST', body: JSON.stringify(payload) });
+  }
+
+  // Parent portal
+  async parentLinkChild(payload: { childEmail?: string; childId?: string }) {
+    return this.request('/parents/link', { method: 'POST', body: JSON.stringify(payload) });
+  }
+  async parentUnlinkChild(childId: string) {
+    return this.request(`/parents/link/${childId}`, { method: 'DELETE' });
+  }
+  async parentChildren() {
+    return this.request('/parents/children');
+  }
+  async parentChildAttendance(childId: string) {
+    return this.request(`/parents/children/${childId}/attendance`);
+  }
+  async parentChildMarks(childId: string) {
+    return this.request(`/parents/children/${childId}/marks`);
+  }
+  async parentChildReceipts(childId: string) {
+    return this.request(`/parents/children/${childId}/fees/receipts`);
+  }
+
+  async getStudentsByCourse(courseId: string) {
+    return this.request(`/students/course/${courseId}`);
+  }
+
+  // Faculty requests
+  async getFacultyRequests() {
+    return this.request('/auth/verification-requests');
+  }
+
+  async updateFacultyRequest(requestId: string, data: { status: 'approved' | 'rejected' }) {
+    return this.request(`/auth/verification-requests/${requestId}/decision`, {
+      method: 'POST',
+      body: JSON.stringify(data)
     });
   }
 }

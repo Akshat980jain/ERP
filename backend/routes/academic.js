@@ -4,8 +4,16 @@ const Attendance = require('../models/Attendance');
 const Marks = require('../models/Marks');
 const User = require('../models/User'); // Added User model import
 const { auth, authorize } = require('../middleware/auth');
+const Settings = require('../models/Settings');
+const Leave = require('../models/Leave');
 
 const router = express.Router();
+
+// Helper function to convert time string to minutes
+const timeToMinutes = (timeStr) => {
+  const [hours, minutes] = timeStr.split(':').map(Number);
+  return hours * 60 + minutes;
+};
 
 // @route   GET /api/academic/courses
 // @desc    Get courses for current user
@@ -57,7 +65,11 @@ router.get('/attendance', auth, async (req, res) => {
       .populate('student', 'name profile.studentId')
       .sort({ date: -1 });
 
-    // Calculate attendance percentage by course
+    // Load attendance policy
+    const settings = await Settings.findOne();
+    const weights = settings?.attendancePolicy?.weights || { present: 1, late: 0.5, absent: 0 };
+
+    // Calculate attendance percentage by course (accounting for lecture counts and policy weights)
     const attendanceStats = {};
     attendance.forEach(record => {
       const courseId = record.course._id.toString();
@@ -69,10 +81,16 @@ router.get('/attendance', auth, async (req, res) => {
           percentage: 0
         };
       }
-      attendanceStats[courseId].total++;
-      if (record.status === 'present') {
-        attendanceStats[courseId].present++;
-      }
+      // Use lectureCount to determine how many lectures this attendance represents
+      const lectureCount = record.lectureCount || 1;
+      attendanceStats[courseId].total += lectureCount;
+      const add = (status) => {
+        if (status === 'present') return weights.present;
+        if (status === 'late') return weights.late;
+        if (status === 'absent') return weights.absent;
+        return 0;
+      };
+      attendanceStats[courseId].present += lectureCount * add(record.status);
     });
 
     // Calculate percentages
@@ -308,7 +326,8 @@ router.get('/schedule-attendance', auth, async (req, res) => {
           status: existingRecord ? existingRecord.status : null,
           markedAt: existingRecord ? existingRecord.markedAt : null,
           isWithinSchedule: existingRecord ? existingRecord.isWithinSchedule : false,
-          remarks: existingRecord ? existingRecord.remarks : ''
+          remarks: existingRecord ? existingRecord.remarks : '',
+          lectureCount: existingRecord ? existingRecord.lectureCount : 1
         };
       });
 
@@ -374,7 +393,9 @@ router.post('/schedule-attendance', auth, authorize('faculty', 'admin'), async (
     // Check if attendance is being marked within the scheduled time window
     const now = new Date();
     const slotStartTime = new Date(date + 'T' + scheduleSlot.startTime);
-    const slotEndTime = new Date(date + 'T' + scheduleSlot.endTime);
+    // Prefer endTime from the course schedule; fallback to provided endTime or startTime
+    const effectiveEndTime = (validSlot && validSlot.endTime) || scheduleSlot.endTime || scheduleSlot.startTime;
+    const slotEndTime = new Date(date + 'T' + effectiveEndTime);
     
     // Allow marking attendance 15 minutes before and 30 minutes after the scheduled time
     const earlyWindow = new Date(slotStartTime.getTime() - 15 * 60 * 1000);
@@ -384,6 +405,11 @@ router.post('/schedule-attendance', auth, authorize('faculty', 'admin'), async (
 
     const results = [];
     const errors = [];
+
+    // Preload approved leaves for date to auto-mark duty/medical
+    const approvedLeaves = await Leave.find({ status: 'approved', startDate: { $lte: attendanceDate }, endDate: { $gte: attendanceDate } })
+      .select('student type');
+    const leaveMap = new Map(approvedLeaves.map(l => [l.student.toString(), l.type]));
 
     // Process each student's attendance
     for (const record of attendanceData) {
@@ -403,6 +429,23 @@ router.post('/schedule-attendance', auth, authorize('faculty', 'admin'), async (
           existingAttendance.remarks = record.remarks || '';
           existingAttendance.markedAt = now;
           existingAttendance.isWithinSchedule = isWithinTimeWindow;
+          // If student has approved leave on this date, set reason
+          const leaveType = leaveMap.get(record.studentId);
+          if (leaveType === 'duty') existingAttendance.attendanceReason = 'dutyLeave';
+          else if (leaveType === 'medical') existingAttendance.attendanceReason = 'medicalLeave';
+          // Ensure schedule endTime stays in sync
+          if (!existingAttendance.scheduleSlot) {
+            existingAttendance.scheduleSlot = { day: dayOfWeek, startTime: scheduleSlot.startTime, endTime: effectiveEndTime, room: validSlot.room || '' };
+          } else {
+            existingAttendance.scheduleSlot.endTime = effectiveEndTime;
+          }
+          
+          // Recalculate lecture count based on schedule duration
+          const startMinutes = timeToMinutes(scheduleSlot.startTime);
+          const endMinutes = timeToMinutes(effectiveEndTime);
+          const durationMinutes = endMinutes - startMinutes;
+          const standardLectureDuration = 50;
+          existingAttendance.lectureCount = Math.max(1, Math.ceil(durationMinutes / standardLectureDuration));
           
           await existingAttendance.save();
           results.push({ studentId: record.studentId, status: 'updated' });
@@ -418,11 +461,12 @@ router.post('/schedule-attendance', auth, authorize('faculty', 'admin'), async (
             scheduleSlot: {
               day: dayOfWeek,
               startTime: scheduleSlot.startTime,
-              endTime: scheduleSlot.endTime,
+              endTime: effectiveEndTime,
               room: validSlot.room || ''
             },
             markedAt: now,
-            isWithinSchedule: isWithinTimeWindow
+            isWithinSchedule: isWithinTimeWindow,
+            attendanceReason: (leaveMap.get(record.studentId) === 'duty' ? 'dutyLeave' : (leaveMap.get(record.studentId) === 'medical' ? 'medicalLeave' : 'regular'))
           });
 
           await attendance.save();

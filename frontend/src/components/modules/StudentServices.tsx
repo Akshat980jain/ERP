@@ -6,10 +6,10 @@ import { Input } from '../ui/Input';
 import apiClient from '../../utils/api';
 
 interface StudentService {
-  id: string;
+  _id: string;
   type: string;
   status: string;
-  requestDate: string;
+  requestDate?: string;
   approvedDate?: string;
   remarks?: string;
 }
@@ -34,7 +34,17 @@ export function StudentServices() {
       setError('');
       try {
         const servicesRes = await apiClient.getStudentServices();
-        setServices(Array.isArray(servicesRes.services) ? servicesRes.services : []);
+        const list = Array.isArray(servicesRes.services) ? servicesRes.services : [];
+        // Normalize to expected shape
+        const normalized: StudentService[] = list.map((s: any) => ({
+          _id: s._id,
+          type: s.type || s.name || 'Service',
+          status: s.status || 'pending',
+          requestDate: s.requestDate ? new Date(s.requestDate).toLocaleDateString() : '',
+          approvedDate: s.approvedDate ? new Date(s.approvedDate).toLocaleDateString() : undefined,
+          remarks: s.remarks || ''
+        }));
+        setServices(normalized);
         // If you have a downloads API, fetch it here. Otherwise, leave as empty.
         setDownloads([]);
       } catch {
@@ -88,7 +98,7 @@ export function StudentServices() {
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                 {services.map((service) => (
-                  <div key={service.id} className="p-4 border-2 rounded-lg">
+                  <div key={service._id} className="p-4 border-2 rounded-lg">
                     <div className="flex items-start space-x-3">
                       <FileText className="w-6 h-6 text-blue-600 mt-1" />
                       <div className="flex-1">
@@ -122,7 +132,7 @@ export function StudentServices() {
             ) : (
             <div className="space-y-4">
                 {services.map((app) => (
-                <div key={app.id} className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
+                <div key={app._id} className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
                   <div className="flex items-center space-x-4">
                       {app.status === 'approved' ? <CheckCircle className="w-5 h-5 text-green-500" /> : app.status === 'pending' ? <Clock className="w-5 h-5 text-yellow-500" /> : <XCircle className="w-5 h-5 text-red-500" />}
                     <div>

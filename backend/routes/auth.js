@@ -131,11 +131,21 @@ router.post('/request-registration', async (req, res) => {
     }
 
     // Role-specific field validation
-    const needsBranchCourse = ['student', 'faculty', 'placement'].includes(requestedRole);
-    if (needsBranchCourse && (!branch || !course)) {
-      return res.status(400).json({ 
-        success: false, 
-        message: 'Branch and course are required for the selected role' 
+    const needsCourse = ['student', 'faculty', 'placement'].includes(requestedRole);
+    const branchEligibleCourses = new Set(['B.Tech', 'M.Tech']);
+    const needsBranch = needsCourse && branchEligibleCourses.has(course);
+
+    if (needsCourse && !course) {
+      return res.status(400).json({
+        success: false,
+        message: 'Course is required for the selected role'
+      });
+    }
+
+    if (needsBranch && !branch) {
+      return res.status(400).json({
+        success: false,
+        message: 'Branch is required for B.Tech and M.Tech'
       });
     }
 
@@ -211,7 +221,8 @@ router.post('/request-registration', async (req, res) => {
       email: email.toLowerCase().trim(),
       password: password, // Store plain password
       requestedRole,
-      branch: branch ? branch.trim() : null,
+      // Only include branch for B.Tech/M.Tech
+      branch: (course && ['B.Tech', 'M.Tech'].includes(course)) && branch ? branch.trim() : null,
       course: course ? course.trim() : null,
       program: program ? program.trim() : (course ? course.trim() : null),
       currentRole: 'none',
@@ -536,14 +547,20 @@ router.post('/request-verification', auth, async (req, res) => {
 router.get('/verification-requests', auth, authorize('admin', 'faculty'), async (req, res) => {
   try {
     let query = { status: 'pending' };
-    const { role, adminPrograms } = req.user;
+    const { role, adminPrograms, program: userProgram } = req.user;
 
     const isProgramAdmin = role === 'admin' && Array.isArray(adminPrograms) && adminPrograms.length > 0;
     const isSuperAdmin = role === 'admin' && (!adminPrograms || adminPrograms.length === 0);
 
     if (role === 'faculty') {
-      // Faculty can only see student requests
+      // Faculty can only see student requests FROM THEIR PROGRAM
       query.requestedRole = 'student';
+      if (userProgram) {
+        query.program = userProgram;
+      } else {
+        // If faculty has no program set, return none to avoid cross-program leakage
+        query.program = '__none__';
+      }
     } else if (isProgramAdmin) {
       // Program Admins see student and faculty requests for their programs
       query.$and = [
@@ -990,6 +1007,19 @@ router.get('/all-users', auth, authorize('admin'), async (req, res) => {
       success: false, 
       message: 'Server error' 
     });
+  }
+});
+
+// @route   GET /api/auth/departments
+// @desc    Get all departments
+// @access  Private
+router.get('/departments', auth, async (req, res) => {
+  try {
+    const departments = await User.distinct('department', { role: 'student' });
+    res.json({ departments });
+  } catch (error) {
+    console.error('Get departments error:', error);
+    res.status(500).json({ message: 'Server error' });
   }
 });
 

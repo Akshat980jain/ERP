@@ -68,6 +68,11 @@ const transportSchema = new mongoose.Schema({
       enum: ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
     }]
   },
+  lastLocation: {
+    latitude: Number,
+    longitude: Number,
+    timestamp: Date
+  },
   subscribers: [{
     student: {
       type: mongoose.Schema.Types.ObjectId,

@@ -11,6 +11,7 @@ const roles = [
 
 const courses = [
   { value: 'B.Tech', label: 'B.Tech' },
+  { value: 'M.Tech', label: 'M.Tech' },
   { value: 'MBA', label: 'MBA' },
   { value: 'MCA', label: 'MCA' },
   { value: 'B.Pharma', label: 'B.Pharma' },
@@ -63,10 +64,17 @@ export default function RequestVerificationPage() {
       return false;
     }
 
-    // Check branch and course for specific roles
-    const showBranchCourse = ['student', 'faculty', 'placement'].includes(form.requestedRole);
-    if (showBranchCourse && (!form.branch.trim() || !form.course.trim())) {
-      setError('Branch and course are required for the selected role');
+    // Check course and branch requirements per role and course type
+    const showCourseFields = ['student', 'faculty', 'placement'].includes(form.requestedRole);
+    const branchEligibleCourses = new Set(['B.Tech', 'M.Tech']);
+
+    if (showCourseFields && !form.course.trim()) {
+      setError('Course is required for the selected role');
+      return false;
+    }
+
+    if (showCourseFields && branchEligibleCourses.has(form.course) && !form.branch.trim()) {
+      setError('Branch is required for B.Tech and M.Tech');
       return false;
     }
 
@@ -85,8 +93,10 @@ export default function RequestVerificationPage() {
       return;
     }
 
-    // Check if branch and course are needed for this role
-    const showBranchCourse = ['student', 'faculty', 'placement'].includes(form.requestedRole);
+    // Check if course/branch are needed for this role
+    const showCourseFields = ['student', 'faculty', 'placement'].includes(form.requestedRole);
+    const branchEligibleCourses = new Set(['B.Tech', 'M.Tech']);
+    const showBranchField = showCourseFields && branchEligibleCourses.has(form.course);
 
     try {
       // Create payload with ALL necessary fields including confirmPassword
@@ -96,11 +106,10 @@ export default function RequestVerificationPage() {
         password: form.password,
         confirmPassword: form.confirmPassword, // Add this field
         requestedRole: form.requestedRole,
-        // Always include branch and course fields, even if empty, for roles that need them
-        ...(showBranchCourse && {
-          branch: form.branch.trim(),
-          course: form.course.trim()
-        }),
+        // Include course for relevant roles
+        ...(showCourseFields && { course: form.course.trim() }),
+        // Include branch only when applicable (B.Tech/M.Tech)
+        ...(showBranchField && { branch: form.branch.trim() }),
         // Only include program if it's selected
         ...(form.requestedRole === 'admin' && form.program && { program: form.program })
       };
@@ -139,8 +148,10 @@ export default function RequestVerificationPage() {
     }
   };
 
-  // Only show branch and course for student, faculty, placement
-  const showBranchCourse = ['student', 'faculty', 'placement'].includes(form.requestedRole);
+  // Determine visibility for course and branch fields
+  const showCourseFields = ['student', 'faculty', 'placement'].includes(form.requestedRole);
+  const branchEligibleCourses = new Set(['B.Tech', 'M.Tech']);
+  const showBranchField = showCourseFields && branchEligibleCourses.has(form.course);
   const showProgram = form.requestedRole === 'admin';
 
   return (
@@ -209,24 +220,14 @@ export default function RequestVerificationPage() {
               ))}
             </select>
             
-            {showBranchCourse && (
+            {showCourseFields && (
               <>
-                <input
-                  name="branch"
-                  value={form.branch}
-                  onChange={handleChange}
-                  placeholder="Branch (e.g., Computer Science, Mechanical)"
-                  className="border border-gray-300 rounded-lg px-4 py-2 w-full focus:outline-none focus:ring-2 focus:ring-blue-400 transition"
-                  required={showBranchCourse}
-                  disabled={loading}
-                />
-                
                 <select
                   name="course"
                   value={form.course}
                   onChange={handleChange}
                   className="border border-gray-300 rounded-lg px-4 py-2 w-full focus:outline-none focus:ring-2 focus:ring-blue-400 transition"
-                  required={showBranchCourse}
+                  required={showCourseFields}
                   disabled={loading}
                 >
                   <option value="" disabled>Select a course</option>
@@ -234,6 +235,18 @@ export default function RequestVerificationPage() {
                     <option key={course.value} value={course.value}>{course.label}</option>
                   ))}
                 </select>
+
+                {showBranchField && (
+                  <input
+                    name="branch"
+                    value={form.branch}
+                    onChange={handleChange}
+                    placeholder="Branch (e.g., Computer Science, Mechanical)"
+                    className="border border-gray-300 rounded-lg px-4 py-2 w-full focus:outline-none focus:ring-2 focus:ring-blue-400 transition"
+                    required={showBranchField}
+                    disabled={loading}
+                  />
+                )}
               </>
             )}
             {showProgram && (

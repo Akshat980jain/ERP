@@ -40,6 +40,7 @@ export interface Course {
 export interface CourseSchedule {
   day: string;
   time: string;
+  endTime?: string;
   duration: number;
   room: string;
 }
@@ -55,12 +56,14 @@ export interface ScheduleAttendanceData {
   schedule: Array<{
     day: string;
     time: string;
+    endTime?: string;
     room: string;
   }>;
   attendanceMatrix: Array<{
     slot: {
       day: string;
       time: string;
+      endTime?: string;
       room: string;
     };
     attendance: Array<{
@@ -74,6 +77,7 @@ export interface ScheduleAttendanceData {
       markedAt: string | null;
       isWithinSchedule: boolean;
       remarks: string;
+      lectureCount?: number;
     }>;
   }>;
 }

@@ -22,6 +22,14 @@ import { PlacementModule } from './components/modules/PlacementModule';
 import { ProfileModule } from './components/modules/ProfileModule';
 import { StudentServices } from './components/modules/StudentServices';
 import { AssignmentModule } from './components/modules/AssignmentModule';
+import { ExamModule } from './components/modules/ExamModule';
+import { FeedbackModule } from './components/modules/FeedbackModule';
+import { CalendarModule } from './components/modules/CalendarModule';
+import { ReportsModule } from './components/modules/ReportsModule';
+import { SettingsModule } from './components/modules/SettingsModule';
+import { TransportModule } from './components/modules/TransportModule';
+import { HostelModule } from './components/modules/HostelModule';
+import { ParentPortal } from './components/modules/ParentPortal';
 
 function AppContent() {
   const { user, isLoading } = useAuth();
@@ -102,6 +110,12 @@ function AppContent() {
                       return <ScheduleModule />;
                     case 'assignments': // Faculty and Students
                       return <AssignmentModule />;
+                    case 'exams':
+                      return <ExamModule />;
+                    case 'feedback':
+                      return <FeedbackModule />;
+                    case 'calendar':
+                      return <CalendarModule />;
                     case 'notifications':
                       return <NotificationModule />;
                     case 'finance':
@@ -114,6 +128,12 @@ function AppContent() {
                       return <ProfileModule />;
                     case 'services':
                       return <StudentServices />;
+                    case 'transport':
+                      return <TransportModule />;
+                    case 'hostel':
+                      return <HostelModule />;
+                    case 'parent':
+                      return <ParentPortal />;
                     case 'analytics': // Admin only
                       // TODO: Replace with AnalyticsModule if available
                       return (
@@ -125,21 +145,9 @@ function AppContent() {
                     case 'users': // Admin: User Management
                       return <UserManagement />;
                     case 'reports': // Admin only
-                      // TODO: Replace with ReportsModule if available
-                      return (
-                        <div className="text-center py-12">
-                          <h2 className="text-2xl font-semibold text-gray-900 mb-4">Reports</h2>
-                          <p className="text-gray-600">This module is under development...</p>
-                        </div>
-                      );
+                      return <ReportsModule />;
                     case 'settings': // Admin only
-                      // TODO: Replace with SettingsModule if available
-                      return (
-                        <div className="text-center py-12">
-                          <h2 className="text-2xl font-semibold text-gray-900 mb-4">System Settings</h2>
-                          <p className="text-gray-600">This module is under development...</p>
-                        </div>
-                      );
+                      return <SettingsModule />;
                     default:
                       return (
                         <div className="text-center py-12">

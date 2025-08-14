@@ -80,6 +80,12 @@ const examSchema = new mongoose.Schema({
       isCorrect: Boolean,
       marksAwarded: Number
     }],
+    // Manual grading support
+    manualMarks: [{
+      questionIndex: Number,
+      marksAwarded: { type: Number, min: 0 },
+      comment: String
+    }],
     totalMarks: Number,
     percentage: Number,
     grade: String,
@@ -90,7 +96,10 @@ const examSchema = new mongoose.Schema({
     },
     timeSpent: Number, // in minutes
     ipAddress: String,
-    browserInfo: String
+    browserInfo: String,
+    feedback: String,
+    gradedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+    gradedAt: Date
   }],
   settings: {
     shuffleQuestions: {

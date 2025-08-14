@@ -1,25 +1,27 @@
 const express = require('express');
 const { body, validationResult } = require('express-validator');
 const Assignment = require('../models/Assignment');
-const Course = require('../models/Course');
+const Course = require('../models/Course'); 
 const { auth, authorize, checkVerification } = require('../middleware/auth');
 const { assignmentAttachmentsUpload, submissionFilesUpload } = require('../middleware/upload');
 
 const router = express.Router();
 
 // Get assignments
-router.get('/', auth, checkVerification, async (req, res) => {
+// Note: Do NOT block students from viewing assignments due to verification status
+// so we intentionally skip `checkVerification` here.
+router.get('/', auth, async (req, res) => {
   try {
     const { courseId, status } = req.query;
     
     let query = {};
     
     if (req.user.role === 'student') {
-      // Students see assignments from their enrolled courses that have started
+      // Students see published assignments from their enrolled courses (including upcoming ones)
       const enrolledCourses = await Course.find({ students: req.user._id }).select('_id');
-      query.course = { $in: enrolledCourses.map(c => c._id) };
+      const courseIds = Array.isArray(enrolledCourses) ? enrolledCourses.map(c => c._id) : [];
+      query.course = { $in: courseIds };
       query.status = 'published';
-      query.startDate = { $lte: new Date() }; // Only show assignments that have started
     } else if (req.user.role === 'faculty') {
       // Faculty see assignments they created
       query.faculty = req.user._id;
@@ -30,17 +32,28 @@ router.get('/', auth, checkVerification, async (req, res) => {
 
     const assignments = await Assignment.find(query)
       .populate('course', 'name code')
-      .populate('faculty', 'firstName lastName')
+      .populate('faculty', 'name firstName lastName')
       .sort({ dueDate: 1 });
 
     // For students, add submission status
     if (req.user.role === 'student') {
       const assignmentsWithStatus = assignments.map(assignment => {
-        const submission = assignment.submissions.find(
-          sub => sub.student.toString() === req.user._id.toString()
+        const a = assignment.toObject();
+        const submissions = Array.isArray(a.submissions) ? a.submissions : [];
+        const submission = submissions.find(
+          (sub) => sub && sub.student && sub.student.toString() === req.user._id.toString()
         );
+        // Normalize file fields for frontend: use `attachments` with filename/url/size
+        const attachments = Array.isArray(a.attachments)
+          ? a.attachments.map(f => ({
+              filename: f.filename,
+              url: f.url,
+              size: f.size || 0
+            }))
+          : [];
         return {
-          ...assignment.toObject(),
+          ...a,
+          attachments,
           hasSubmitted: !!submission,
           submissionStatus: submission?.status,
           marks: submission?.marks,
@@ -50,7 +63,17 @@ router.get('/', auth, checkVerification, async (req, res) => {
       return res.json({ assignments: assignmentsWithStatus });
     }
 
-    res.json({ assignments });
+    // Normalize attachments for non-student responses too
+    const normalized = assignments.map(a => {
+      const obj = a.toObject();
+      return {
+        ...obj,
+        attachments: Array.isArray(obj.attachments)
+          ? obj.attachments.map(f => ({ filename: f.filename, url: f.url, size: f.size || 0 }))
+          : []
+      };
+    });
+    res.json({ assignments: normalized });
   } catch (error) {
     console.error('Get assignments error:', error);
     res.status(500).json({ message: 'Server error' });
@@ -92,7 +115,13 @@ router.post('/', auth, authorize('faculty', 'admin'), assignmentAttachmentsUploa
       return res.status(403).json({ message: 'Access denied' });
     }
 
-    const attachments = Array.isArray(req.files) ? req.files.map(f => ({ filename: f.originalname, url: `/uploads/assignments/questions/${f.filename}`, size: f.size })) : [];
+    const attachments = Array.isArray(req.files)
+      ? req.files.map(f => ({
+          filename: f.originalname,
+          url: `/uploads/assignments/questions/${f.filename}`,
+          size: f.size
+        }))
+      : [];
 
     console.log('Creating assignment with data:', {
       title,
@@ -165,7 +194,13 @@ router.post('/:assignmentId/submit', auth, authorize('student'), checkVerificati
       return res.status(400).json({ message: 'Assignment submission deadline has passed' });
     }
 
-    const files = Array.isArray(req.files) ? req.files.map(f => ({ filename: f.originalname, url: `/uploads/assignments/submissions/${f.filename}`, size: f.size })) : [];
+    const files = Array.isArray(req.files)
+      ? req.files.map(f => ({
+          filename: f.originalname,
+          url: `/uploads/assignments/submissions/${f.filename}`,
+          size: f.size
+        }))
+      : [];
 
     assignment.submissions.push({
       student: req.user._id,

@@ -20,6 +20,7 @@ interface ScheduleItem {
     _id: string;
     name: string;
   };
+  lectureCount?: number;
 }
 
 const DAYS_OF_WEEK = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
@@ -28,6 +29,45 @@ const TIME_SLOTS = [
   '12:00', '12:30', '13:00', '13:30', '14:00', '14:30', '15:00', '15:30', 
   '16:00', '16:30', '17:00', '17:30', '18:00', '18:30', '19:00', '19:30'
 ];
+
+// Utility function to convert time string to minutes for sorting
+const timeToMinutes = (timeStr: string) => {
+  const [hours, minutes] = timeStr.split(':').map(Number);
+  return hours * 60 + minutes;
+};
+
+// Utility function to validate time range
+const isValidTimeRange = (startTime: string, endTime: string) => {
+  return timeToMinutes(endTime) > timeToMinutes(startTime);
+};
+
+// Utility function to get end time 1 hour after start time
+const getDefaultEndTime = (startTime: string) => {
+  const [hours, minutes] = startTime.split(':').map(Number);
+  const endHours = hours + 1;
+  const endMinutes = minutes;
+  return `${endHours.toString().padStart(2, '0')}:${endMinutes.toString().padStart(2, '0')}`;
+};
+
+// Utility function to calculate duration between two times
+const getDuration = (startTime: string, endTime: string) => {
+  const startMinutes = timeToMinutes(startTime);
+  const endMinutes = timeToMinutes(endTime);
+  const durationMinutes = endMinutes - startMinutes;
+  
+  if (durationMinutes <= 0) return '0 min';
+  
+  const hours = Math.floor(durationMinutes / 60);
+  const minutes = durationMinutes % 60;
+  
+  if (hours > 0 && minutes > 0) {
+    return `${hours}h ${minutes}m`;
+  } else if (hours > 0) {
+    return `${hours}h`;
+  } else {
+    return `${minutes}m`;
+  }
+};
 
 export function ScheduleModule() {
   const { user } = useAuth();
@@ -95,6 +135,13 @@ export function ScheduleModule() {
 
   const addScheduleItem = async (e: React.FormEvent) => {
     e.preventDefault();
+    
+    // Validate time range
+    if (!isValidTimeRange(newScheduleItem.startTime, newScheduleItem.endTime)) {
+      setError('End time must be after start time');
+      return;
+    }
+    
     setLoading(true);
     setError('');
     setSuccess('');
@@ -116,7 +163,7 @@ export function ScheduleModule() {
           course: '',
           dayOfWeek: 'Monday',
           startTime: '09:00',
-          endTime: '10:00',
+          endTime: '10:00', // Always 1 hour after start time
           room: '',
           type: 'lecture'
         });
@@ -135,6 +182,12 @@ export function ScheduleModule() {
     e.preventDefault();
     if (!editingItem) return;
 
+    // Validate time range
+    if (!isValidTimeRange(newScheduleItem.startTime, newScheduleItem.endTime)) {
+      setError('End time must be after start time');
+      return;
+    }
+
     setLoading(true);
     setError('');
     setSuccess('');
@@ -146,7 +199,11 @@ export function ScheduleModule() {
         startTime: newScheduleItem.startTime,
         endTime: newScheduleItem.endTime,
         room: newScheduleItem.room,
-        type: newScheduleItem.type
+        type: newScheduleItem.type,
+        // Provide original identifiers so backend can find and update the correct slot
+        originalCourseId: editingItem.course._id,
+        originalDayOfWeek: editingItem.dayOfWeek,
+        originalStartTime: editingItem.startTime,
       };
       
       const data = await apiClient.updateScheduleItem(editingItem.course._id, scheduleData) as { success: boolean; message?: string };
@@ -160,7 +217,7 @@ export function ScheduleModule() {
           course: '',
           dayOfWeek: 'Monday',
           startTime: '09:00',
-          endTime: '10:00',
+          endTime: '10:00', // Always 1 hour after start time
           room: '',
           type: 'lecture'
         });
@@ -212,7 +269,35 @@ export function ScheduleModule() {
   const getScheduleForDay = (day: string) => {
     return schedule
       .filter(item => item.dayOfWeek === day)
-      .sort((a, b) => a.startTime.localeCompare(b.startTime));
+      .sort((a, b) => {
+        // Convert time strings to minutes for proper numerical sorting
+        const aMinutes = timeToMinutes(a.startTime);
+        const bMinutes = timeToMinutes(b.startTime);
+        
+        return aMinutes - bMinutes; // Sort in ascending order (earliest first)
+      });
+  };
+
+  const getTotalDayDuration = (day: string) => {
+    const daySchedule = getScheduleForDay(day);
+    let totalMinutes = 0;
+    
+    daySchedule.forEach(item => {
+      totalMinutes += timeToMinutes(item.endTime) - timeToMinutes(item.startTime);
+    });
+    
+    if (totalMinutes <= 0) return '0 min';
+    
+    const hours = Math.floor(totalMinutes / 60);
+    const minutes = totalMinutes % 60;
+    
+    if (hours > 0 && minutes > 0) {
+      return `${hours}h ${minutes}m`;
+    } else if (hours > 0) {
+      return `${hours}h`;
+    } else {
+      return `${minutes}m`;
+    }
   };
 
   const getTypeColor = (type: string) => {
@@ -238,7 +323,7 @@ export function ScheduleModule() {
                 course: '',
                 dayOfWeek: 'Monday',
                 startTime: '09:00',
-                endTime: '10:00',
+                endTime: '10:00', // Always 1 hour after start time
                 room: '',
                 type: 'lecture'
               });
@@ -310,13 +395,37 @@ export function ScheduleModule() {
                   <input
                     type="time"
                     value={newScheduleItem.startTime}
-                    onChange={(e) => setNewScheduleItem({ ...newScheduleItem, startTime: e.target.value })}
+                    onChange={(e) => {
+                      const newStartTime = e.target.value;
+                      setNewScheduleItem({ 
+                        ...newScheduleItem, 
+                        startTime: newStartTime,
+                        // Auto-adjust end time if it's now invalid
+                        endTime: newStartTime && newScheduleItem.endTime && 
+                                !isValidTimeRange(newStartTime, newScheduleItem.endTime)
+                                  ? getDefaultEndTime(newStartTime)
+                                  : newScheduleItem.endTime
+                      });
+                    }}
                     className="flex-1 border rounded px-3 py-2"
                     required
                   />
                   <select
                     value={newScheduleItem.startTime}
-                    onChange={(e) => setNewScheduleItem({ ...newScheduleItem, startTime: e.target.value })}
+                    onChange={(e) => {
+                      const newStartTime = e.target.value;
+                      if (newStartTime) {
+                        setNewScheduleItem({ 
+                          ...newScheduleItem, 
+                          startTime: newStartTime,
+                          // Auto-adjust end time if it's now invalid
+                          endTime: newScheduleItem.endTime && 
+                                  !isValidTimeRange(newStartTime, newScheduleItem.endTime)
+                                    ? getDefaultEndTime(newStartTime)
+                                    : newScheduleItem.endTime
+                        });
+                      }
+                    }}
                     className="w-24 border rounded px-2 py-2 text-xs"
                   >
                     <option value="">Quick</option>
@@ -334,7 +443,11 @@ export function ScheduleModule() {
                     type="time"
                     value={newScheduleItem.endTime}
                     onChange={(e) => setNewScheduleItem({ ...newScheduleItem, endTime: e.target.value })}
-                    className="flex-1 border rounded px-3 py-2"
+                    className={`flex-1 border rounded px-3 py-2 ${
+                      newScheduleItem.startTime && newScheduleItem.endTime && 
+                      !isValidTimeRange(newScheduleItem.startTime, newScheduleItem.endTime)
+                        ? 'border-red-500' : ''
+                    }`}
                     required
                   />
                   <select
@@ -348,7 +461,13 @@ export function ScheduleModule() {
                     ))}
                   </select>
                 </div>
-                <p className="text-xs text-gray-500 mt-1">Enter custom time or use quick select</p>
+                <p className="text-xs text-gray-500 mt-1">
+                  {newScheduleItem.startTime && newScheduleItem.endTime && 
+                   !isValidTimeRange(newScheduleItem.startTime, newScheduleItem.endTime)
+                    ? '⚠️ End time must be after start time'
+                    : 'Enter custom time or use quick select'
+                  }
+                </p>
               </div>
             </div>
             <div>
@@ -385,9 +504,14 @@ export function ScheduleModule() {
         <div className="grid grid-cols-1 lg:grid-cols-7 divide-y lg:divide-y-0 lg:divide-x divide-gray-200">
           {DAYS_OF_WEEK.map(day => (
             <div key={day} className="p-4">
-              <h3 className="font-semibold text-lg text-gray-800 mb-4 flex items-center">
-                <Calendar className="w-5 h-5 mr-2" />
-                {day}
+              <h3 className="font-semibold text-lg text-gray-800 mb-4 flex items-center justify-between">
+                <div className="flex items-center">
+                  <Calendar className="w-5 h-5 mr-2" />
+                  {day}
+                </div>
+                <span className="text-sm text-gray-500 font-normal">
+                  {getTotalDayDuration(day)}
+                </span>
               </h3>
               <div className="space-y-2">
                 {getScheduleForDay(day).map((item, index) => (
@@ -403,6 +527,14 @@ export function ScheduleModule() {
                         <div className="flex items-center text-xs text-gray-500 mb-1">
                           <Clock className="w-3 h-3 mr-1" />
                           {item.startTime} - {item.endTime}
+                          <span className="ml-2 text-gray-400">
+                            ({getDuration(item.startTime, item.endTime)})
+                          </span>
+                          {item.lectureCount && item.lectureCount > 1 && (
+                            <span className="ml-2 bg-blue-100 text-blue-800 text-xs px-2 py-1 rounded-full">
+                              {item.lectureCount} lectures
+                            </span>
+                          )}
                         </div>
                         <div className="flex items-center text-xs text-gray-500 mb-2">
                           <MapPin className="w-3 h-3 mr-1" />

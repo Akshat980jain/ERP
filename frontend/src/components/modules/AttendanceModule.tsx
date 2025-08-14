@@ -35,6 +35,7 @@ interface AttendanceRecord {
   markedAt: string | null;
   isWithinSchedule: boolean;
   remarks: string;
+  lectureCount?: number;
 }
 
 export function AttendanceModule() {
@@ -99,26 +100,30 @@ export function AttendanceModule() {
     setLoading(false);
   };
 
-  const isWithinTimeWindow = (slotTime: string) => {
+  const isWithinTimeWindow = (slotTime: string, slotEndTime?: string) => {
     const now = currentTime;
     const slotStartTime = new Date(selectedDate + 'T' + slotTime);
-    const slotEndTime = new Date(slotStartTime.getTime() + 60 * 60 * 1000); // 1 hour duration
+    const endTime = slotEndTime
+      ? new Date(selectedDate + 'T' + slotEndTime)
+      : new Date(slotStartTime.getTime() + 60 * 60 * 1000); // default 1 hour
     
     // Allow marking attendance 15 minutes before and 30 minutes after the scheduled time
     const earlyWindow = new Date(slotStartTime.getTime() - 15 * 60 * 1000);
-    const lateWindow = new Date(slotEndTime.getTime() + 30 * 60 * 1000);
+    const lateWindow = new Date(endTime.getTime() + 30 * 60 * 1000);
     
     return now >= earlyWindow && now <= lateWindow;
   };
 
-  const getTimeStatus = (slotTime: string) => {
+  const getTimeStatus = (slotTime: string, slotEndTime?: string) => {
     const now = currentTime;
     const slotStartTime = new Date(selectedDate + 'T' + slotTime);
-    const slotEndTime = new Date(slotStartTime.getTime() + 60 * 60 * 1000);
+    const endTime = slotEndTime
+      ? new Date(selectedDate + 'T' + slotEndTime)
+      : new Date(slotStartTime.getTime() + 60 * 60 * 1000);
     
     if (now < slotStartTime) return 'upcoming';
-    if (now >= slotStartTime && now <= slotEndTime) return 'current';
-    if (now > slotEndTime) return 'past';
+    if (now >= slotStartTime && now <= endTime) return 'current';
+    if (now > endTime) return 'past';
     return 'unknown';
   };
 
@@ -128,7 +133,7 @@ export function AttendanceModule() {
     const updatedMatrix = [...scheduleAttendance.attendanceMatrix];
     updatedMatrix[slotIndex].attendance[studentIndex].status = status;
     updatedMatrix[slotIndex].attendance[studentIndex].markedAt = new Date().toISOString();
-    updatedMatrix[slotIndex].attendance[studentIndex].isWithinSchedule = isWithinTimeWindow(updatedMatrix[slotIndex].slot.time);
+    updatedMatrix[slotIndex].attendance[studentIndex].isWithinSchedule = isWithinTimeWindow(updatedMatrix[slotIndex].slot.time, updatedMatrix[slotIndex].slot.endTime);
 
     setScheduleAttendance({
       ...scheduleAttendance,
@@ -163,7 +168,7 @@ export function AttendanceModule() {
         date: selectedDate,
         scheduleSlot: {
           startTime: slot.slot.time,
-          endTime: slot.slot.time // Assuming 1-hour slots
+          endTime: slot.slot.endTime || slot.slot.time
         },
         attendanceData
       });
@@ -271,8 +276,8 @@ export function AttendanceModule() {
             ) : (
               <div className="space-y-6">
                 {scheduleAttendance.attendanceMatrix.map((slotData, slotIndex) => {
-                  const timeStatus = getTimeStatus(slotData.slot.time);
-                  const isWithinWindow = isWithinTimeWindow(slotData.slot.time);
+                  const timeStatus = getTimeStatus(slotData.slot.time, slotData.slot.endTime);
+                  const isWithinWindow = isWithinTimeWindow(slotData.slot.time, slotData.slot.endTime);
                   
                   return (
                     <div key={slotIndex} className="border rounded-lg p-4">
@@ -281,7 +286,7 @@ export function AttendanceModule() {
                           {getTimeStatusIcon(timeStatus)}
                           <div>
                             <h4 className="font-semibold text-lg">
-                              {slotData.slot.time} - {slotData.slot.room}
+                              {slotData.slot.time}{slotData.slot.endTime ? ` - ${slotData.slot.endTime}` : ''} - {slotData.slot.room}
                             </h4>
                             <p className={`text-sm ${getTimeStatusColor(timeStatus)}`}>
                               {timeStatus === 'current' ? 'Currently in session' :

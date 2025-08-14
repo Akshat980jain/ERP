@@ -34,7 +34,7 @@ interface Assignment {
 }
 
 export function StudentDashboard() {
-  const { user } = useAuth();
+  const { user, token } = useAuth();
   const [attendanceStats, setAttendanceStats] = useState<{ present: number; absent: number; percentage: number }>({ present: 0, absent: 0, percentage: 0 });
   const [marksData, setMarksData] = useState<{ subject: string; marks: number }[]>([]);
   const [cgpa, setCgpa] = useState<string>('N/A');
@@ -50,21 +50,24 @@ export function StudentDashboard() {
   const [assignmentsError, setAssignmentsError] = useState('');
 
   useEffect(() => {
+    if (!user || user.role !== 'student') return; // Only fetch for students
     async function fetchData() {
       setLoading(true);
       try {
-        // Attendance
+        // Attendance (weighted: present = 100%, late = 50%, absent = 0%)
         const attendanceRes = await apiClient.getAttendance();
-        let present = 0, absent = 0, total = 0;
+        let presentWeighted = 0, totalWeighted = 0;
         if (attendanceRes && attendanceRes.attendance) {
-          attendanceRes.attendance.forEach((rec: Attendance) => {
-            if (rec.status === 'present') present++;
-            if (rec.status === 'absent') absent++;
-            total++;
+          attendanceRes.attendance.forEach((rec: any) => {
+            const weight = typeof rec.lectureCount === 'number' && rec.lectureCount > 0 ? rec.lectureCount : 1;
+            totalWeighted += weight;
+            if (rec.status === 'present') presentWeighted += weight;
+            else if (rec.status === 'late') presentWeighted += 0.5 * weight;
           });
         }
-        const percentage = total > 0 ? Math.round((present / total) * 100) : 0;
-        setAttendanceStats({ present, absent, percentage });
+        const percentage = totalWeighted > 0 ? Math.round((presentWeighted / totalWeighted) * 100) : 0;
+        const absentWeighted = Math.max(0, totalWeighted - presentWeighted);
+        setAttendanceStats({ present: Number(presentWeighted.toFixed(1)), absent: Number(absentWeighted.toFixed(1)), percentage });
 
         // Marks
         const marksRes = await apiClient.getMarks();
@@ -138,7 +141,7 @@ export function StudentDashboard() {
       setLoading(false);
     }
     fetchData();
-  }, []);
+  }, [user, token]);
 
   const quickStats = [
     { title: 'Overall Attendance', value: loading ? '...' : (attendanceStats.percentage > 0 ? attendanceStats.percentage + '%' : 'N/A'), icon: Clock, color: 'text-green-600' },
@@ -207,7 +210,7 @@ export function StudentDashboard() {
             <CardTitle>Attendance Overview</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="h-64">
+            <div className="relative h-64">
               <ResponsiveContainer width="100%" height="100%">
                 <PieChart>
                   <Pie
@@ -225,6 +228,11 @@ export function StudentDashboard() {
                   <Tooltip />
                 </PieChart>
               </ResponsiveContainer>
+              <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                <div className="text-3xl font-bold text-green-600">
+                  {loading ? '...' : `${attendanceStats.percentage}%`}
+                </div>
+              </div>
             </div>
             <div className="flex justify-center space-x-4 mt-4">
               {attendanceData.map((entry, index) => (

@@ -6,6 +6,7 @@ const Attendance = require('../models/Attendance');
 const Marks = require('../models/Marks');
 const Fee = require('../models/Fee');
 const { auth, authorize, checkVerification } = require('../middleware/auth');
+const Settings = require('../models/Settings');
 
 const router = express.Router();
 
@@ -86,12 +87,21 @@ async function generateStudentAnalytics(studentId) {
 
   if (!student) throw new Error('Student not found');
 
-  // Calculate attendance statistics
+  // Calculate attendance statistics (weighted by lectureCount)
+  const settings = await Settings.findOne();
+  const weights = settings?.attendancePolicy?.weights || { present: 1, late: 0.5, absent: 0 };
+
+  const totals = attendance.reduce((acc, rec) => {
+    const weight = typeof rec.lectureCount === 'number' && rec.lectureCount > 0 ? rec.lectureCount : 1;
+    acc.total += weight;
+    if (rec.status === 'present') acc.present += weight * weights.present;
+    else if (rec.status === 'late') acc.present += weight * weights.late;
+    return acc;
+  }, { total: 0, present: 0 });
   const attendanceStats = {
-    totalClasses: attendance.length,
-    presentClasses: attendance.filter(a => a.status === 'present').length,
-    percentage: attendance.length > 0 ? 
-      Math.round((attendance.filter(a => a.status === 'present').length / attendance.length) * 100) : 0
+    totalClasses: totals.total,
+    presentClasses: totals.present,
+    percentage: totals.total > 0 ? Math.round((totals.present / totals.total) * 100) : 0
   };
 
   // Calculate academic performance
@@ -143,10 +153,17 @@ async function generateDepartmentAnalytics(department, academicYear, semester) {
     Fee.find({ student: { $in: studentIds } })
   ]);
 
+  const deptTotals = attendance.reduce((acc, rec) => {
+    const weight = typeof rec.lectureCount === 'number' && rec.lectureCount > 0 ? rec.lectureCount : 1;
+    acc.total += weight;
+    if (rec.status === 'present') acc.present += weight * weights.present;
+    else if (rec.status === 'late') acc.present += weight * weights.late;
+    return acc;
+  }, { total: 0, present: 0 });
+
   return {
     totalStudents: students.length,
-    averageAttendance: attendance.length > 0 ? 
-      Math.round((attendance.filter(a => a.status === 'present').length / attendance.length) * 100) : 0,
+    averageAttendance: deptTotals.total > 0 ? Math.round((deptTotals.present / deptTotals.total) * 100) : 0,
     averageMarks: marks.length > 0 ? 
       Math.round(marks.reduce((sum, mark) => sum + mark.percentage, 0) / marks.length) : 0,
     feeCollection: {
@@ -165,10 +182,17 @@ async function generateCourseAnalytics(courseId) {
     Marks.find({ course: courseId })
   ]);
 
+  const courseTotals = attendance.reduce((acc, rec) => {
+    const weight = typeof rec.lectureCount === 'number' && rec.lectureCount > 0 ? rec.lectureCount : 1;
+    acc.total += weight;
+    if (rec.status === 'present') acc.present += weight * weights.present;
+    else if (rec.status === 'late') acc.present += weight * weights.late;
+    return acc;
+  }, { total: 0, present: 0 });
+
   return {
     enrolledStudents: course.enrolledStudents.length,
-    averageAttendance: attendance.length > 0 ? 
-      Math.round((attendance.filter(a => a.status === 'present').length / attendance.length) * 100) : 0,
+    averageAttendance: courseTotals.total > 0 ? Math.round((courseTotals.present / courseTotals.total) * 100) : 0,
     averageMarks: marks.length > 0 ? 
       Math.round(marks.reduce((sum, mark) => sum + mark.percentage, 0) / marks.length) : 0,
     passRate: marks.length > 0 ? 

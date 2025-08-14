@@ -11,7 +11,9 @@ import {
   Users, 
   Calendar, 
   Clock, 
-  MapPin 
+  MapPin,
+  MessageSquare,
+  Star
 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import apiClient from '../../utils/api';
@@ -58,6 +60,15 @@ export function CourseModule() {
     year: new Date().getFullYear(),
     maxStudents: 50
   });
+
+  // Feedback state
+  const [showFeedbackForm, setShowFeedbackForm] = useState<string | null>(null);
+  const [feedbackForm, setFeedbackForm] = useState({
+    rating: 5,
+    comment: '',
+    anonymous: false
+  });
+  const [feedbackLoading, setFeedbackLoading] = useState(false);
 
   const departments = ['Computer Science', 'Electronics', 'Mechanical', 'Civil', 'Chemical'];
   const semesters = ['Odd', 'Even' ];
@@ -277,6 +288,42 @@ export function CourseModule() {
       i === index ? { ...slot, [field]: value } : slot
     );
     setNewCourse({ ...newCourse, schedule: updatedSchedule });
+  };
+
+  const submitFeedback = async (courseId: string) => {
+    if (!feedbackForm.comment.trim()) {
+      setError('Please provide a comment');
+      return;
+    }
+
+    setFeedbackLoading(true);
+    setError('');
+    
+    try {
+      await apiClient.submitFeedback({
+        courseId,
+        rating: feedbackForm.rating,
+        comment: feedbackForm.comment,
+        anonymous: feedbackForm.anonymous
+      });
+      
+      setSuccess('Feedback submitted successfully!');
+      setShowFeedbackForm(null);
+      setFeedbackForm({ rating: 5, comment: '', anonymous: false });
+      
+      // Clear success message after 3 seconds
+      setTimeout(() => setSuccess(''), 3000);
+    } catch (err: any) {
+      setError(err?.message || 'Failed to submit feedback');
+    } finally {
+      setFeedbackLoading(false);
+    }
+  };
+
+  const resetFeedbackForm = () => {
+    setShowFeedbackForm(null);
+    setFeedbackForm({ rating: 5, comment: '', anonymous: false });
+    setError('');
   };
 
   if (loading && courses.length === 0) {
@@ -616,7 +663,86 @@ export function CourseModule() {
                     </div>
                   </div>
                 )}
+
+                {/* Feedback Section */}
+                {user?.role === 'student' && (
+                  <div className="pt-3 border-t border-gray-100">
+                    <button
+                      onClick={() => setShowFeedbackForm(showFeedbackForm === course._id ? null : course._id)}
+                      className="flex items-center text-blue-600 hover:text-blue-700 text-sm font-medium"
+                    >
+                      <MessageSquare className="w-4 h-4 mr-1" />
+                      {showFeedbackForm === course._id ? 'Cancel Feedback' : 'Give Feedback'}
+                    </button>
+                  </div>
+                )}
               </div>
+
+              {/* Feedback Form */}
+              {showFeedbackForm === course._id && user?.role === 'student' && (
+                <div className="border-t border-gray-100 p-4 bg-gray-50">
+                  <h4 className="font-medium text-gray-900 mb-3">Course Feedback</h4>
+                  <div className="space-y-3">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Rating</label>
+                      <div className="flex items-center space-x-1">
+                        {[1, 2, 3, 4, 5].map((star) => (
+                          <button
+                            key={star}
+                            type="button"
+                            onClick={() => setFeedbackForm(prev => ({ ...prev, rating: star }))}
+                            className={`p-1 ${feedbackForm.rating >= star ? 'text-yellow-400' : 'text-gray-300'}`}
+                          >
+                            <Star className="w-5 h-5 fill-current" />
+                          </button>
+                        ))}
+                        <span className="ml-2 text-sm text-gray-600">{feedbackForm.rating}/5</span>
+                      </div>
+                    </div>
+                    
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Comment</label>
+                      <textarea
+                        value={feedbackForm.comment}
+                        onChange={(e) => setFeedbackForm(prev => ({ ...prev, comment: e.target.value }))}
+                        placeholder="Share your thoughts about this course..."
+                        rows={3}
+                        className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                        required
+                      />
+                    </div>
+                    
+                    <div className="flex items-center">
+                      <input
+                        type="checkbox"
+                        id={`anonymous-${course._id}`}
+                        checked={feedbackForm.anonymous}
+                        onChange={(e) => setFeedbackForm(prev => ({ ...prev, anonymous: e.target.checked }))}
+                        className="mr-2"
+                      />
+                      <label htmlFor={`anonymous-${course._id}`} className="text-sm text-gray-700">
+                        Submit anonymously
+                      </label>
+                    </div>
+                    
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => submitFeedback(course._id)}
+                        disabled={feedbackLoading || !feedbackForm.comment.trim()}
+                        className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        {feedbackLoading ? 'Submitting...' : 'Submit Feedback'}
+                      </button>
+                      <button
+                        onClick={resetFeedbackForm}
+                        className="px-4 py-2 bg-gray-500 text-white rounded-lg hover:bg-gray-600"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         ))}

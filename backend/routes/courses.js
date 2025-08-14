@@ -317,8 +317,8 @@ router.delete('/:id', auth, async (req, res) => {
   }
 });
 
-// POST enroll student in course
-router.post('/:id/enroll', auth, async (req, res) => {
+  // POST enroll student in course
+  router.post('/:id/enroll', auth, async (req, res) => {
   try {
     const course = await Course.findById(req.params.id);
     if (!course) {
@@ -335,8 +335,8 @@ router.post('/:id/enroll', auth, async (req, res) => {
     
     // Check if student is already enrolled in this specific course
     if (course.students.some(id => id.toString() === studentId.toString())) {
-      return res.status(400).json({ 
-        success: false, 
+      return res.status(200).json({ 
+        success: true,
         message: `Student is already enrolled in ${course.name} (${course.code})`,
         alreadyEnrolled: true
       });
@@ -491,7 +491,38 @@ router.get('/students', auth, async (req, res) => {
     if (req.user.role !== 'admin' && req.user.role !== 'faculty') {
       return res.status(403).json({ success: false, message: 'Access denied' });
     }
-    const students = await User.find({ role: 'student' }).select('name email profile studentId department');
+    const query = { role: 'student' };
+    if (req.user.role === 'faculty') {
+      const facultyProgram = req.user.program || null;
+      const facultyBranch = req.user.branch || null;
+      const facultyDepartment = req.user.department || null;
+      if (facultyProgram || facultyBranch || facultyDepartment) {
+        query.$or = [];
+        if (facultyProgram) {
+          query.$or.push(
+            { program: facultyProgram },
+            { 'profile.course': facultyProgram }
+          );
+        }
+        if (facultyBranch) {
+          query.$or.push(
+            { branch: facultyBranch },
+            { department: facultyBranch },
+            { 'profile.branch': facultyBranch }
+          );
+        }
+        if (facultyDepartment) {
+          query.$or.push(
+            { branch: facultyDepartment },
+            { department: facultyDepartment },
+            { 'profile.branch': facultyDepartment }
+          );
+        }
+        if (query.$or.length === 0) delete query.$or;
+      }
+    }
+
+    const students = await User.find(query).select('name email profile studentId department program branch');
     res.json({ success: true, students });
   } catch (error) {
     console.error('Error fetching students:', error);

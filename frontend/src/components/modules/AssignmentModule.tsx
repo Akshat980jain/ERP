@@ -3,6 +3,10 @@ import { FileText, Upload, Calendar, Clock, CheckCircle, AlertTriangle, Eye, Dow
 import { Card, CardHeader, CardTitle, CardContent } from '../ui/Card';
 import { Button } from '../ui/Button';
 import { useAuth } from '../../contexts/AuthContext';
+// Remove problematic PDF viewer imports
+// import { Worker, Viewer } from '@react-pdf-viewer/core';
+// import '@react-pdf-viewer/core/lib/styles/index.css';
+// import '@react-pdf-viewer/default-layout/lib/styles/index.css';
 
 interface Assignment {
   _id: string;
@@ -22,12 +26,11 @@ interface Assignment {
   feedback?: string;
   status: string;
   allowLateSubmission?: boolean;
-  questionFiles?: Array<{
+  // Backend provides `attachments` with shape { filename (original name), url, size }
+  attachments?: Array<{
     filename: string;
-    originalName: string;
+    url: string;
     size: number;
-    mimetype: string;
-    uploadDate: string;
   }>;
   instructions?: string;
   lateSubmissionPenalty?: number;
@@ -50,8 +53,8 @@ interface Submission {
   submissionDate?: string;
   content?: string;
   files?: Array<{
-    filename: string;
-    originalName: string;
+    filename: string; // original name
+    url: string;
     size: number;
   }>;
 }
@@ -86,6 +89,19 @@ export function AssignmentModule() {
   const [submissionsError, setSubmissionsError] = useState('');
   const [submissions, setSubmissions] = useState<Submission[]>([]);
   const [gradesDraft, setGradesDraft] = useState<Record<string, { marks: number | ''; feedback: string; saving?: boolean }>>({});
+
+  // Keep state for PDF modal
+  const [pdfUrl, setPdfUrl] = useState<string | null>(null);
+  const [pdfModalOpen, setPdfModalOpen] = useState(false);
+
+  const openPdfModal = (url: string) => {
+    setPdfUrl(url);
+    setPdfModalOpen(true);
+  };
+  const closePdfModal = () => {
+    setPdfModalOpen(false);
+    setPdfUrl(null);
+  };
 
   useEffect(() => {
     if (!token) return;
@@ -237,18 +253,16 @@ export function AssignmentModule() {
     setSubmitting(false);
   };
 
-  const downloadQuestionFile = async (assignmentId: string, filename: string, originalName: string) => {
+  const downloadQuestionFile = async (file: { url: string; filename: string }) => {
     try {
-      const res = await fetch(`/api/assignments/${assignmentId}/download/${filename}`, {
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
+      const res = await fetch(file.url, { headers: { 'Authorization': `Bearer ${token}` } });
       
       if (res.ok) {
         const blob = await res.blob();
         const url = window.URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
-        a.download = originalName;
+        a.download = file.filename || 'download';
         document.body.appendChild(a);
         a.click();
         window.URL.revokeObjectURL(url);
@@ -261,18 +275,16 @@ export function AssignmentModule() {
     }
   };
 
-  const downloadSubmissionFile = async (assignmentId: string, studentId: string, filename: string, originalName: string) => {
+  const downloadSubmissionFile = async (file: { url: string; filename: string }) => {
     try {
-      const res = await fetch(`/api/assignments/${assignmentId}/submissions/${studentId}/download/${filename}`, {
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
+      const res = await fetch(file.url, { headers: { 'Authorization': `Bearer ${token}` } });
       
       if (res.ok) {
         const blob = await res.blob();
         const url = window.URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
-        a.download = originalName;
+        a.download = file.filename || 'download';
         document.body.appendChild(a);
         a.click();
         window.URL.revokeObjectURL(url);
@@ -771,23 +783,34 @@ export function AssignmentModule() {
                   )}
 
                  {/* Question Files */}
-                 {assignment.questionFiles && assignment.questionFiles.length > 0 && (
+                 {assignment.attachments && assignment.attachments.length > 0 && (
                     <div className="mt-3">
                       <p className="text-xs font-medium text-gray-600 mb-2">Question Files:</p>
                       <div className="space-y-1">
-                        {assignment.questionFiles.map((file, index) => (
+                        {assignment.attachments.map((file, index) => (
                           <div key={index} className="flex items-center justify-between p-2 bg-gray-50 rounded border">
                             <div className="flex items-center">
                               <FileText className="w-3 h-3 mr-2 text-gray-500" />
-                              <span className="text-xs font-medium">{file.originalName}</span>
+                              <span className="text-xs font-medium">{file.filename}</span>
                             </div>
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => downloadQuestionFile(assignment._id, file.filename, file.originalName)}
-                            >
-                              <Download className="w-3 h-3" />
-                            </Button>
+                            <div className="flex gap-2">
+                              {file.filename.toLowerCase().endsWith('.pdf') && (
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => openPdfModal(file.url)}
+                                >
+                                  View
+                                </Button>
+                              )}
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => downloadQuestionFile(file)}
+                              >
+                                <Download className="w-3 h-3" />
+                              </Button>
+                            </div>
                           </div>
                         ))}
                       </div>
@@ -1041,26 +1064,32 @@ export function AssignmentModule() {
                               <div key={fileIndex} className="flex items-center justify-between bg-white p-3 rounded-lg border">
                                 <div className="flex items-center">
                                   <FileText className="w-4 h-4 mr-2 text-blue-600" />
-                                  <span className="text-sm font-medium">{file.originalName}</span>
+                                  <span className="text-sm font-medium">{file.filename}</span>
                                   <span className="text-xs text-gray-500 ml-2">
                                     ({(file.size / 1024 / 1024).toFixed(2)} MB)
                                   </span>
                                 </div>
-                                <Button
-                                  variant="outline"
-                                  size="sm"
-                                  onClick={() => downloadSubmissionFile(
-                                    viewSubmissionsFor._id,
-                                    submission.student._id,
-                                    file.filename,
-                                    file.originalName
+                                <div className="flex gap-2">
+                                  {file.filename.toLowerCase().endsWith('.pdf') && (
+                                    <Button
+                                      variant="outline"
+                                      size="sm"
+                                      onClick={() => openPdfModal(file.url)}
+                                    >
+                                      View
+                                    </Button>
                                   )}
-                                >
-                                  <Download className="w-4 h-4" />
-                                </Button>
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => downloadSubmissionFile(file)}
+                                  >
+                                    <Download className="w-4 h-4" />
+                                  </Button>
+                                </div>
                               </div>
                             ))}
-          </div>
+                          </div>
                         </div>
                       )}
 
@@ -1127,6 +1156,25 @@ export function AssignmentModule() {
               )}
             </CardContent>
           </Card>
+        </div>
+      )}
+
+      {/* PDF Modal using native browser viewer */}
+      {pdfModalOpen && pdfUrl && (
+        <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg shadow-lg p-4 w-[95vw] h-[95vh] max-w-none max-h-none flex flex-col">
+            <div className="flex justify-between items-center mb-2">
+              <span className="font-semibold">PDF Viewer</span>
+              <Button variant="outline" size="sm" onClick={closePdfModal}><X className="w-4 h-4" /></Button>
+            </div>
+            <div className="flex-1 overflow-hidden border rounded">
+              <iframe
+                src={pdfUrl}
+                title="PDF"
+                className="w-full h-full"
+              />
+            </div>
+          </div>
         </div>
       )}
     </div>

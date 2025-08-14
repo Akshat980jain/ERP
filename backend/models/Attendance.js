@@ -20,6 +20,11 @@ const attendanceSchema = new mongoose.Schema({
     enum: ['present', 'absent', 'late'],
     required: true
   },
+  attendanceReason: {
+    type: String,
+    enum: ['regular', 'dutyLeave', 'medicalLeave'],
+    default: 'regular'
+  },
   markedBy: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User',
@@ -50,6 +55,12 @@ const attendanceSchema = new mongoose.Schema({
   isWithinSchedule: {
     type: Boolean,
     default: false
+  },
+  // New field to track how many lectures this attendance represents
+  lectureCount: {
+    type: Number,
+    default: 1,
+    min: 1
   }
 }, {
   timestamps: true
@@ -58,7 +69,28 @@ const attendanceSchema = new mongoose.Schema({
 // Compound index to prevent duplicate attendance records
 attendanceSchema.index({ student: 1, course: 1, date: 1, 'scheduleSlot.day': 1, 'scheduleSlot.startTime': 1 }, { unique: true });
 
-// Pre-save middleware to validate schedule
+// Helper function to calculate lecture count based on duration
+const calculateLectureCount = (startTime, endTime) => {
+  const startMinutes = timeToMinutes(startTime);
+  const endMinutes = timeToMinutes(endTime);
+  const durationMinutes = endMinutes - startMinutes;
+  
+  // Standard lecture duration is 50 minutes
+  const standardLectureDuration = 50;
+  
+  // Calculate how many standard lectures this duration represents
+  const lectureCount = Math.ceil(durationMinutes / standardLectureDuration);
+  
+  return Math.max(1, lectureCount); // Minimum 1 lecture
+};
+
+// Helper function to convert time string to minutes
+const timeToMinutes = (timeStr) => {
+  const [hours, minutes] = timeStr.split(':').map(Number);
+  return hours * 60 + minutes;
+};
+
+// Pre-save middleware to validate schedule and calculate lecture count
 attendanceSchema.pre('save', async function(next) {
   try {
     // Get the course to check its schedule
@@ -83,12 +115,17 @@ attendanceSchema.pre('save', async function(next) {
       this.scheduleSlot = {
         day: matchingSlot.day,
         startTime: matchingSlot.time,
-        endTime: matchingSlot.time, // Assuming 1-hour slots
+        endTime: matchingSlot.endTime || matchingSlot.time, // Use endTime from schedule
         room: matchingSlot.room || ''
       };
       this.isWithinSchedule = true;
+      
+      // Calculate lecture count based on duration
+      this.lectureCount = calculateLectureCount(this.scheduleSlot.startTime, this.scheduleSlot.endTime);
     } else {
       this.isWithinSchedule = false;
+      // Default to 1 lecture if not within schedule
+      this.lectureCount = 1;
     }
 
     next();

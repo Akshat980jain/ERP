@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { Bus, MapPin, Clock, Users, Phone, CheckCircle } from 'lucide-react';
+import { Bus, MapPin, Clock, Users, Phone, CheckCircle, Satellite } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardContent } from '../ui/Card';
 import { Button } from '../ui/Button';
 import { useAuth } from '../../contexts/AuthContext';
+import apiClient from '../../utils/api';
 
 interface TransportRoute {
   _id: string;
@@ -41,6 +42,7 @@ export function TransportModule() {
   const [error, setError] = useState('');
   const [selectedRoute, setSelectedRoute] = useState<TransportRoute | null>(null);
   const [selectedStop, setSelectedStop] = useState('');
+  const [etaByRoute, setEtaByRoute] = useState<Record<string, Array<{ stop: string; etaMinutes: number|null }>>>({});
 
   useEffect(() => {
     fetchRoutes();
@@ -50,16 +52,15 @@ export function TransportModule() {
     setLoading(true);
     setError('');
     try {
-      const token = localStorage.getItem('token');
-      const res = await fetch('/api/transport/routes', {
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
-      const data = await res.json();
-      if (res.ok) {
-        setRoutes(data.routes || []);
-      } else {
-        setError(data.message || 'Failed to fetch routes');
-      }
+      const data = await apiClient.listTransportRoutes() as any;
+      setRoutes(data.routes || []);
+      // fetch ETA for each route
+      const etaEntries = await Promise.all((data.routes||[]).map(async (r: any) => {
+        try { const e = await apiClient.getRouteEta(r._id); return [r._id, e.eta]; } catch { return [r._id, []]; }
+      }));
+      const map: any = {};
+      etaEntries.forEach(([id, eta]) => { map[id] = eta; });
+      setEtaByRoute(map);
     } catch {
       setError('Failed to fetch routes');
     }
@@ -68,23 +69,10 @@ export function TransportModule() {
 
   const subscribeToRoute = async (routeId: string, stop: string) => {
     try {
-      const token = localStorage.getItem('token');
-      const res = await fetch(`/api/transport/routes/${routeId}/subscribe`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify({ stop })
-      });
-      const data = await res.json();
-      if (res.ok) {
-        setSelectedRoute(null);
-        setSelectedStop('');
-        fetchRoutes(); // Refresh routes
-      } else {
-        setError(data.message || 'Failed to subscribe to route');
-      }
+      await apiClient.subscribeTransportRoute(routeId, stop);
+      setSelectedRoute(null);
+      setSelectedStop('');
+      fetchRoutes();
     } catch {
       setError('Failed to subscribe to route');
     }
@@ -181,6 +169,9 @@ export function TransportModule() {
                           </div>
                           <div className="text-gray-500">
                             <span>{stop.time}</span>
+                            {etaByRoute[route._id]?.find(e=>e.stop===stop.name)?.etaMinutes != null && (
+                              <span className="ml-2 inline-flex items-center text-blue-600"><Satellite className="w-3 h-3 mr-1" />{etaByRoute[route._id].find(e=>e.stop===stop.name)?.etaMinutes}m</span>
+                            )}
                             <span className="ml-2">₹{stop.fare}</span>
                           </div>
                         </div>

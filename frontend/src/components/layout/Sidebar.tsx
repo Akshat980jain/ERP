@@ -25,7 +25,11 @@ import {
   MessageCircle,
   Shield,
   Wifi,
-  WifiOff
+  WifiOff,
+  Menu,
+  ChevronLeft,
+  Bus,
+  Building2
 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { clsx } from 'clsx';
@@ -138,6 +142,23 @@ export function Sidebar({
               priority: 'high',
             },
             { 
+              id: 'schedule', 
+              label: 'Schedule', 
+              icon: Calendar,
+              category: 'academics',
+              description: 'Class schedules',
+              color: 'indigo'
+            },
+            { 
+              id: 'exams', 
+              label: 'Exams', 
+              icon: FileCheck,
+              category: 'academics',
+              description: 'View and take scheduled exams',
+              color: 'red',
+              priority: 'high'
+            },
+            { 
               id: 'assignments', 
               label: 'Assignments', 
               icon: FileText,
@@ -184,6 +205,14 @@ export function Sidebar({
               description: 'Student support services',
               color: 'cyan'
             },
+            { 
+              id: 'transport', 
+              label: 'Transport', 
+              icon: Bus,
+              category: 'services',
+              description: 'Routes & subscriptions',
+              color: 'blue'
+            },
           ];
         
         case 'faculty':
@@ -198,6 +227,30 @@ export function Sidebar({
               gradient: true,
               badge: 4,
               badgeType: 'info'
+            },
+            { 
+              id: 'exams', 
+              label: 'Exams', 
+              icon: FileCheck,
+              category: 'teaching',
+              description: 'Create and conduct exams',
+              color: 'red'
+            },
+            { 
+              id: 'feedback', 
+              label: 'Feedback', 
+              icon: MessageCircle,
+              category: 'management',
+              description: 'Course feedback summary',
+              color: 'purple'
+            },
+            { 
+              id: 'calendar', 
+              label: 'Calendar', 
+              icon: Calendar,
+              category: 'management',
+              description: 'Academic calendar',
+              color: 'indigo'
             },
             { 
               id: 'assignments', 
@@ -303,6 +356,22 @@ export function Sidebar({
               category: 'system',
               description: 'Security settings',
               color: 'red'
+            },
+            { 
+              id: 'hostel', 
+              label: 'Hostel', 
+              icon: Building2,
+              category: 'management',
+              description: 'Rooms & allocations',
+              color: 'purple'
+            },
+            { 
+              id: 'transport', 
+              label: 'Transport', 
+              icon: Bus,
+              category: 'management',
+              description: 'Routes & GPS',
+              color: 'blue'
             },
           ];
         
@@ -434,64 +503,104 @@ export function Sidebar({
 
     return (
       <div key={item.id} className="relative">
-        <button
-          onClick={() => hasChildren ? toggleCategory(item.id) : handleTabChange(item.id)}
+        <div
+          className="relative group"
           onMouseEnter={() => setHoveredItem(item.id)}
           onMouseLeave={() => setHoveredItem(null)}
-          onContextMenu={(e) => {
-            e.preventDefault();
-            setShowContextMenu(item.id);
-          }}
-          className={clsx(
-            'w-full flex items-center space-x-3 px-4 py-3 rounded-xl text-left transition-all duration-200',
-            'group relative hover:shadow-lg hover:scale-[1.02] transform',
-            'focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-opacity-50',
-            getColorClasses(item, isActive),
-            {
-              'shadow-lg scale-[1.02]': isActive,
-              'ml-4': level > 0,
-              'animate-pulse': animateItems && isActive
-            }
-          )}
         >
-          {/* Active indicator */}
-          {isActive && (
-            <div className="absolute left-0 top-1/2 transform -translate-y-1/2 w-1 h-8 bg-white rounded-r-full" />
-          )}
+          <button
+            onClick={() => hasChildren ? toggleCategory(item.id) : handleTabChange(item.id)}
+            onContextMenu={(e) => {
+              e.preventDefault();
+              setShowContextMenu(item.id);
+            }}
+            className={clsx(
+              'w-full flex items-center text-left transition-all duration-200',
+              'group relative hover:shadow-lg transform',
+              'focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-opacity-50',
+              getColorClasses(item, isActive),
+              {
+                'shadow-lg scale-[1.02]': isActive,
+                'ml-4': level > 0,
+                'animate-pulse': animateItems && isActive,
+                // Collapsed styles
+                'px-3 py-3 rounded-xl justify-center': collapsed,
+                'px-4 py-3 rounded-xl space-x-3 hover:scale-[1.02]': !collapsed,
+              }
+            )}
+            title={collapsed ? item.label : undefined}
+          >
+            {/* Active indicator */}
+            {isActive && !collapsed && (
+              <div className="absolute left-0 top-1/2 transform -translate-y-1/2 w-1 h-8 bg-white rounded-r-full" />
+            )}
 
-          <div className="flex items-center space-x-3 flex-1">
-            {/* Icon with enhanced styling */}
-            <div className="relative">
-              <div className={clsx(
-                'p-2 rounded-lg transition-all duration-200',
-                {
-                  'bg-white bg-opacity-20': isActive,
-                  'bg-gray-100': !isActive && !collapsed,
-                  'scale-110': isHovered && !collapsed
-                }
-              )}>
-                <Icon className={clsx('w-5 h-5', {
-                  'text-white': isActive,
-                  [`text-${item.color}-600`]: !isActive && item.color
-                })} />
-              </div>
-              
-              {/* Status indicators */}
-              {item.isNew && (
-                <div className="absolute -top-1 -right-1 w-3 h-3 bg-red-500 rounded-full flex items-center justify-center">
-                  <div className="w-1.5 h-1.5 bg-white rounded-full" />
+            {collapsed ? (
+              // Collapsed view - just icon
+              <div className="relative flex items-center justify-center">
+                <div className={clsx(
+                  'p-2 rounded-lg transition-all duration-200',
+                  {
+                    'bg-white bg-opacity-20': isActive,
+                    'bg-gray-100': !isActive,
+                    'scale-110': isHovered
+                  }
+                )}>
+                  <Icon className={clsx('w-5 h-5', {
+                    'text-white': isActive,
+                    [`text-${item.color}-600`]: !isActive && item.color
+                  })} />
                 </div>
-              )}
-              
-              {item.isExperimental && (
-                <span className="absolute -top-1 -right-1 w-3 h-3 bg-yellow-400 rounded-full flex items-center justify-center text-white text-xs">
-                  Beta
-                </span>
-              )}
-            </div>
-            
-            {!collapsed && (
-              <>
+                
+                {/* Badge for collapsed state */}
+                {item.badge && (
+                  <div className="absolute -top-1 -right-1 min-w-[18px] h-[18px] bg-red-500 rounded-full flex items-center justify-center">
+                    <span className="text-xs text-white font-semibold">
+                      {typeof item.badge === 'number' && item.badge > 99 ? '99+' : item.badge}
+                    </span>
+                  </div>
+                )}
+                
+                {/* Status indicators for collapsed state */}
+                {item.isNew && !item.badge && (
+                  <div className="absolute -top-1 -right-1 w-3 h-3 bg-red-500 rounded-full flex items-center justify-center">
+                    <div className="w-1.5 h-1.5 bg-white rounded-full" />
+                  </div>
+                )}
+              </div>
+            ) : (
+              // Expanded view - full layout
+              <div className="flex items-center space-x-3 flex-1">
+                {/* Icon with enhanced styling */}
+                <div className="relative">
+                  <div className={clsx(
+                    'p-2 rounded-lg transition-all duration-200',
+                    {
+                      'bg-white bg-opacity-20': isActive,
+                      'bg-gray-100': !isActive,
+                      'scale-110': isHovered
+                    }
+                  )}>
+                    <Icon className={clsx('w-5 h-5', {
+                      'text-white': isActive,
+                      [`text-${item.color}-600`]: !isActive && item.color
+                    })} />
+                  </div>
+                  
+                  {/* Status indicators */}
+                  {item.isNew && (
+                    <div className="absolute -top-1 -right-1 w-3 h-3 bg-red-500 rounded-full flex items-center justify-center">
+                      <div className="w-1.5 h-1.5 bg-white rounded-full" />
+                    </div>
+                  )}
+                  
+                  {item.isExperimental && (
+                    <span className="absolute -top-1 -right-1 w-3 h-3 bg-yellow-400 rounded-full flex items-center justify-center text-white text-xs">
+                      Beta
+                    </span>
+                  )}
+                </div>
+                
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center space-x-2">
                     <span className="font-semibold truncate">{item.label}</span>
@@ -528,10 +637,22 @@ export function Sidebar({
                     </div>
                   )}
                 </div>
-              </>
+              </div>
             )}
-          </div>
-        </button>
+          </button>
+
+          {/* Tooltip for collapsed state */}
+          {collapsed && isHovered && (
+            <div className="fixed left-20 bg-gray-900 text-white px-3 py-2 rounded-lg text-sm z-50 pointer-events-none whitespace-nowrap">
+              {item.label}
+              {item.badge && (
+                <span className="ml-2 px-2 py-0.5 bg-blue-500 rounded-full text-xs">
+                  {item.badge}
+                </span>
+              )}
+            </div>
+          )}
+        </div>
 
         {/* Children */}
         {hasChildren && isExpanded && !collapsed && (
@@ -604,7 +725,7 @@ export function Sidebar({
     <>
       {/* Responsive sidebar container */}
       <div className={clsx(
-        'h-full bg-white border-r border-gray-200 flex flex-col transition-all duration-300 shadow-xl',
+        'h-full bg-white border-r border-gray-200 flex flex-col transition-all duration-300 shadow-xl relative',
         'backdrop-blur-sm bg-white/95',
         'md:static md:translate-x-0 fixed top-0 left-0 z-40',
         {
@@ -613,7 +734,7 @@ export function Sidebar({
         }
       )}>
         {/* Enhanced Header - Fixed height */}
-        <div className="flex-shrink-0 p-6 border-b border-gray-200 bg-gradient-to-r from-blue-600 to-purple-600 text-white">
+        <div className="flex-shrink-0 p-6 border-b border-gray-200 bg-gradient-to-r from-blue-600 to-purple-600 text-white relative">
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-3">
               <div className="w-12 h-12 bg-white bg-opacity-20 rounded-xl flex items-center justify-center backdrop-blur">
@@ -636,8 +757,8 @@ export function Sidebar({
               )}
             </div>
             
-            {!collapsed && (
-              <div className="flex items-center space-x-2">
+            <div className="flex items-center space-x-2">
+              {!collapsed && (
                 <button
                   onClick={() => onThemeChange?.(theme === 'light' ? 'dark' : 'light')}
                   className="p-2 hover:bg-white hover:bg-opacity-20 rounded-lg transition-colors"
@@ -645,19 +766,39 @@ export function Sidebar({
                 >
                   {theme === 'light' ? <Moon className="w-4 h-4" /> : <Sun className="w-4 h-4" />}
                 </button>
-                <button
-                  onClick={() => onCollapseChange?.(!collapsed)}
-                  className="p-2 hover:bg-white hover:bg-opacity-20 rounded-lg transition-colors"
-                  title="Toggle sidebar"
-                >
-                  {collapsed ? <Maximize2 className="w-4 h-4" /> : <Minimize2 className="w-4 h-4" />}
-                </button>
-              </div>
-            )}
+              )}
+              
+              {/* Toggle button - always visible and prominent when collapsed */}
+              <button
+                onClick={() => onCollapseChange?.(!collapsed)}
+                className={clsx(
+                  'p-2 rounded-lg transition-all duration-200',
+                  {
+                    'hover:bg-white hover:bg-opacity-20': !collapsed,
+                    // Make it more prominent when collapsed
+                    'bg-white bg-opacity-20 hover:bg-opacity-30 shadow-lg': collapsed,
+                  }
+                )}
+                title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+              >
+                {collapsed ? <ChevronRight className="w-4 h-4" /> : <ChevronLeft className="w-4 h-4" />}
+              </button>
+            </div>
           </div>
         </div>
 
-
+        {/* Floating Expand Button - Only shown when collapsed */}
+        {collapsed && (
+          <div className="absolute top-1/2 -right-4 z-50">
+            <button
+              onClick={() => onCollapseChange?.(false)}
+              className="w-8 h-8 bg-blue-600 hover:bg-blue-700 text-white rounded-full shadow-lg hover:shadow-xl transition-all duration-200 flex items-center justify-center group"
+              title="Expand sidebar"
+            >
+              <ChevronRight className="w-4 h-4 group-hover:scale-110 transition-transform" />
+            </button>
+          </div>
+        )}
 
         {/* Enhanced Navigation - Flexible height with proper scrolling */}
         <nav className="flex-1 p-4 space-y-3 overflow-y-auto custom-scrollbar min-h-0">
@@ -684,7 +825,9 @@ export function Sidebar({
                 )}
                 
                 {(collapsed || isExpanded) && (
-                  <div className="space-y-2">
+                  <div className={clsx('space-y-2', {
+                    'space-y-3': collapsed // More spacing when collapsed
+                  })}>
                     {items.map(item => renderMenuItem(item))}
                   </div>
                 )}
@@ -696,70 +839,119 @@ export function Sidebar({
         {/* Enhanced Footer - Fixed height */}
         <div className="flex-shrink-0 border-t border-gray-200 bg-gray-50">
           {/* User Profile */}
-          <div className="p-4">
-            <div className="flex items-center space-x-3">
-              <div className="relative">
-                <div className="w-10 h-10 bg-gradient-to-r from-blue-500 to-purple-500 rounded-full flex items-center justify-center text-white font-semibold">
-                  {user?.name.charAt(0)}
+          <div className={clsx('p-4', {'px-2': collapsed
+          })}>
+            <div className={clsx('flex items-center space-x-3', {
+              'justify-center': collapsed
+            })}>
+              {collapsed ? (
+                <div className="w-10 h-10 bg-blue-500 rounded-full flex items-center justify-center">
+                  <span className="text-white font-semibold text-sm">
+                    {user?.name?.charAt(0) || 'U'}
+                  </span>
                 </div>
-              </div>
-              
-              {!collapsed && (
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-semibold text-gray-900 truncate">
-                    {user?.name}
-                  </p>
-                  <p className="text-xs text-gray-500 truncate">{user?.email}</p>
-                </div>
-              )}
-              
-              {!collapsed && (
-                <div className="flex items-center space-x-1">
-                  <button
-                    onClick={() => setShowQuickActions(!showQuickActions)}
-                    className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
-                    title="Quick actions"
-                  >
-                    ⋮
-                  </button>
-                </div>
+              ) : (
+                <>
+                  <div className="w-10 h-10 bg-blue-500 rounded-full flex items-center justify-center">
+                    <span className="text-white font-semibold text-sm">
+                      {user?.name?.charAt(0) || 'U'}
+                    </span>
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-semibold text-gray-900 truncate">
+                      {user?.name || 'User'}
+                    </p>
+                    <p className="text-xs text-gray-500 truncate capitalize">
+                      {user?.role} • {user?.department || 'General'}
+                    </p>
+                  </div>
+                </>
               )}
             </div>
-
-            {/* Quick Actions */}
-            {!collapsed && showQuickActions && (
-              <div className="mt-3 pt-3 border-t border-gray-200">
-                <div className="grid grid-cols-2 gap-2">
-                  <a href="#help" className="flex items-center space-x-2 p-2 text-sm text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors" role="menuitem" tabIndex={0}>
-                    <HelpCircle className="w-4 h-4" />
-                    <span>Help</span>
-                  </a>
-                  <a href="#feedback" className="flex items-center space-x-2 p-2 text-sm text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors" role="menuitem" tabIndex={0}>
-                    <MessageCircle className="w-4 h-4" />
-                    <span>Feedback</span>
-                  </a>
-                  <button
-                    onClick={logout}
-                    className="flex items-center space-x-2 p-2 text-sm text-red-600 hover:text-red-700 hover:bg-red-50 rounded-lg transition-colors"
-                  >
-                    <LogOut className="w-4 h-4" />
-                    <span>Logout</span>
-                  </button>
-                  <a href="#settings" className="flex items-center space-x-2 p-2 text-sm text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors" role="menuitem" tabIndex={0}>
-                    <Settings className="w-4 h-4" />
-                    <span>Settings</span>
-                  </a>
-                </div>
-              </div>
-            )}
           </div>
+
+          {/* Quick Actions */}
+          {/* {!collapsed && (
+            <div className="px-4 pb-2">
+              <div className="flex items-center space-x-2">
+                <button
+                  onClick={() => setShowQuickActions(!showQuickActions)}
+                  className="flex-1 px-3 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
+                >
+                  Quick Actions
+                </button>
+                <button
+                  onClick={logout}
+                  className="p-2 text-gray-500 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
+                  title="Logout"
+                >
+                  <LogOut className="w-4 h-4" />
+                </button>
+                <button
+                  className="p-2 text-gray-500 hover:text-blue-500 hover:bg-blue-50 rounded-lg transition-colors"
+                  title="Help & Support"
+                >
+                  <HelpCircle className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+          )} */}
+
+          {collapsed && (
+            <div className="px-2 pb-2">
+              <button
+                onClick={logout}
+                className="w-full p-2 text-gray-500 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
+                title="Logout"
+              >
+                <LogOut className="w-4 h-4 mx-auto" />
+              </button>
+            </div>
+          )}
+
+          {/* Quick Actions Dropdown */}
+          {/* {showQuickActions && !collapsed && (
+            <div className="mx-4 mb-4 p-3 bg-white border border-gray-200 rounded-lg shadow-lg">
+              <div className="grid grid-cols-2 gap-2">
+                <button className="p-2 text-xs text-gray-600 hover:bg-gray-50 rounded flex flex-col items-center space-y-1">
+                  <Bell className="w-4 h-4" />
+                  <span>Alerts</span>
+                </button>
+                <button className="p-2 text-xs text-gray-600 hover:bg-gray-50 rounded flex flex-col items-center space-y-1">
+                  <MessageCircle className="w-4 h-4" />
+                  <span>Messages</span>
+                </button>
+                <button className="p-2 text-xs text-gray-600 hover:bg-gray-50 rounded flex flex-col items-center space-y-1">
+                  <Calendar className="w-4 h-4" />
+                  <span>Schedule</span>
+                </button>
+                <button className="p-2 text-xs text-gray-600 hover:bg-gray-50 rounded flex flex-col items-center space-y-1">
+                  <Settings className="w-4 h-4" />
+                  <span>Settings</span>
+                </button>
+              </div>
+            </div>
+          )} */}
         </div>
+
+        {/* Resize handle for desktop */}
+        <div className="absolute top-0 right-0 w-1 h-full hover:bg-blue-200 cursor-col-resize transition-colors hidden md:block" />
       </div>
 
-      {/* Removed command palette */}
+      {/* Mobile overlay */}
+      {!collapsed && (
+        <div 
+          className="fixed inset-0 bg-black bg-opacity-50 z-30 md:hidden"
+          onClick={() => onCollapseChange?.(true)}
+        />
+      )}
 
-      {/* Custom Styles */}
+      {/* Custom scrollbar styles */}
       <style>{`
+        .custom-scrollbar {
+          scrollbar-width: thin;
+          scrollbar-color: #cbd5e0 transparent;
+        }
         .custom-scrollbar::-webkit-scrollbar {
           width: 4px;
         }
@@ -767,11 +959,11 @@ export function Sidebar({
           background: transparent;
         }
         .custom-scrollbar::-webkit-scrollbar-thumb {
-          background: #cbd5e1;
+          background-color: #cbd5e0;
           border-radius: 2px;
         }
         .custom-scrollbar::-webkit-scrollbar-thumb:hover {
-          background: #94a3b8;
+          background-color: #a0aec0;
         }
       `}</style>
     </>

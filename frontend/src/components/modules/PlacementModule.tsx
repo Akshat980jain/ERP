@@ -4,7 +4,8 @@ import { Card, CardHeader, CardTitle, CardContent } from '../ui/Card';
 import apiClient from '../../utils/api';
 
 interface Job {
-  id: string;
+  id?: string;
+  _id?: string;
   company: string;
   position: string;
   package: string | { min: number; max: number; currency: string };
@@ -146,9 +147,10 @@ export function PlacementModule() {
             <div className="text-center py-8 text-gray-500">No jobs found.</div>
           ) : (
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              {filteredJobs.map((job, idx) => (
-                job.id ? (
-                  <Card key={`job-${job.id}`}>
+              {filteredJobs.map((job, idx) => {
+                const jobId = job.id || job._id || `idx-${idx}`;
+                return (
+                  <Card key={`job-${jobId}`}>
                     <CardContent>
                       <div className="space-y-4">
                         <div className="flex items-start justify-between">
@@ -192,7 +194,7 @@ export function PlacementModule() {
                           <h4 className="text-sm font-medium text-gray-900 mb-2">Requirements:</h4>
                           <ul className="text-xs text-gray-600 space-y-1">
                             {job.requirements.map((req, index) => (
-                              <li key={job.id + '-req-' + index} className="flex items-center space-x-2">
+                              <li key={`${jobId}-req-${index}`} className="flex items-center space-x-2">
                                 <div className="w-1 h-1 bg-gray-400 rounded-full" />
                                 <span>{req}</span>
                               </li>
@@ -203,14 +205,8 @@ export function PlacementModule() {
                       </div>
                     </CardContent>
                   </Card>
-                ) : (
-                  <Card key={`job-idx-${idx}`}>
-                    <CardContent>
-                      <div className="text-red-500">Invalid job data (missing ID)</div>
-                    </CardContent>
-                  </Card>
-                )
-              ))}
+                );
+              })}
             </div>
           )}
         </div>

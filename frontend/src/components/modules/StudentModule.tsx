@@ -57,14 +57,29 @@ export function StudentModule() {
 
   useEffect(() => {
     const safeStudents = Array.isArray(students) ? students : [];
-    const filtered = safeStudents.filter(student =>
-      student.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      student.email?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      student.studentId?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      student.department?.toLowerCase().includes(searchTerm.toLowerCase())
-    );
+    // Client-side safeguard: if faculty, filter by same program and, for B.Tech/M.Tech, by branch
+    const program = (user as any)?.program || (user as any)?.department || '';
+    const branch = (user as any)?.branch || (user as any)?.department || '';
+    const isFaculty = (user as any)?.role === 'faculty';
+    const requiresBranch = ['B.Tech', 'M.Tech'].includes(program);
+
+    const filtered = safeStudents
+      .filter(student => {
+        if (!isFaculty) return true;
+        const studentProgram = (student as any).program || (student as any).profile?.course || '';
+        const studentBranch = (student as any).branch || (student as any).department || (student as any).profile?.branch || '';
+        const programMatches = program ? studentProgram === program : true;
+        const branchMatches = !requiresBranch || (branch ? studentBranch === branch : false);
+        return programMatches && branchMatches;
+      })
+      .filter(student =>
+        student.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        student.email?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        student.studentId?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        student.department?.toLowerCase().includes(searchTerm.toLowerCase())
+      );
     setFilteredStudents(filtered);
-  }, [students, searchTerm]);
+  }, [students, searchTerm, user]);
 
   // Auto-dismiss toast after 2 seconds
   useEffect(() => {
@@ -217,10 +232,12 @@ export function StudentModule() {
         }
         setShowToast(true);
       }
-    } catch (error) {
+    } catch (error: unknown) {
       console.error('Enrollment error:', error);
+      const msg = error instanceof Error ? error.message : 'Failed to add student to course';
+      // Surface specific server messages (e.g., already enrolled) to the user
       setToastType('error');
-      setToastMessage('Failed to add student to course');
+      setToastMessage(msg);
       setShowToast(true);
     }
     setLoading(false);
