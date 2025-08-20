@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { Settings, Building, GraduationCap, Bell, Shield, Database, Download, TestTube, Save } from 'lucide-react';
+import { Settings, Building, GraduationCap, Bell, Shield, Database, Download, TestTube, Save, QrCode, CheckCircle, XCircle } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardContent } from '../ui/Card';
 import { Button } from '../ui/Button';
 import { Input } from '../ui/Input';
 import { useAuth } from '../../contexts/AuthContext';
+import apiClient from '../../utils/api';
 
 interface SystemSettings {
   institution: {
@@ -98,7 +99,7 @@ interface NotificationSettings {
 }
 
 export function SettingsModule() {
-  const { user, token } = useAuth();
+  const { user, token, updateUser } = useAuth();
   const [activeTab, setActiveTab] = useState('system');
   const [systemSettings, setSystemSettings] = useState<SystemSettings | null>(null);
   const [userPreferences, setUserPreferences] = useState<UserPreferences | null>(null);
@@ -107,6 +108,13 @@ export function SettingsModule() {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [isAdmin] = useState(user?.role === 'admin');
+
+  // Two-Factor Authentication (per-user) state
+  const [twoFactorSetupInProgress, setTwoFactorSetupInProgress] = useState(false);
+  const [twoFactorCode, setTwoFactorCode] = useState('');
+  const [qrDataUrl, setQrDataUrl] = useState<string | null>(null);
+  const [twoFactorLoading, setTwoFactorLoading] = useState(false);
+  const [twoFactorMessage, setTwoFactorMessage] = useState<string | null>(null);
 
   useEffect(() => {
     if (isAdmin && activeTab === 'system') {
@@ -129,6 +137,65 @@ export function SettingsModule() {
       }
     } catch (error) {
       setError('Failed to fetch system settings');
+    }
+  };
+
+  // 2FA actions (per-user)
+  const startTwoFactorSetup = async () => {
+    try {
+      setTwoFactorLoading(true);
+      setTwoFactorMessage(null);
+      const resp = await apiClient.initiate2FASetup();
+      setQrDataUrl(resp.qrDataUrl);
+      setTwoFactorSetupInProgress(true);
+    } catch (e: any) {
+      setTwoFactorMessage(e?.message || 'Failed to start 2FA setup');
+    } finally {
+      setTwoFactorLoading(false);
+    }
+  };
+
+  const verifyTwoFactorSetup = async () => {
+    if (!twoFactorCode || twoFactorCode.trim().length < 6) {
+      setTwoFactorMessage('Enter the 6-digit code from your authenticator app.');
+      return;
+    }
+    try {
+      setTwoFactorLoading(true);
+      setTwoFactorMessage(null);
+      await apiClient.verify2FASetup(twoFactorCode.trim());
+      setTwoFactorSetupInProgress(false);
+      setQrDataUrl(null);
+      setTwoFactorCode('');
+      if (user) {
+        updateUser({ ...user, twoFactorEnabled: true });
+      }
+      setTwoFactorMessage('Two-factor authentication enabled.');
+    } catch (e: any) {
+      setTwoFactorMessage(e?.message || 'Invalid code. Please try again.');
+    } finally {
+      setTwoFactorLoading(false);
+    }
+  };
+
+  const disableTwoFactor = async () => {
+    if (!twoFactorCode || twoFactorCode.trim().length < 6) {
+      setTwoFactorMessage('Enter your current 6-digit code to disable.');
+      return;
+    }
+    try {
+      setTwoFactorLoading(true);
+      setTwoFactorMessage(null);
+      await apiClient.disable2FA(twoFactorCode.trim());
+      setTwoFactorCode('');
+      if (user) {
+        updateUser({ ...user, twoFactorEnabled: false });
+      }
+      setTwoFactorMessage('Two-factor authentication disabled.');
+    } catch (e: any) {
+      setTwoFactorMessage(e?.message || 'Failed to disable 2FA');
+    } finally {
+      setTwoFactorLoading(false);
     }
   };
 
@@ -441,6 +508,73 @@ export function SettingsModule() {
               <label htmlFor="twoFactorAuth" className="text-sm font-medium text-gray-700">
                 Enable Two-Factor Authentication
               </label>
+            </div>
+            {/* Per-user Two-Factor Authentication */}
+            <div className="mt-4 border-t pt-4">
+              <div className="flex items-center mb-3">
+                <QrCode className="w-5 h-5 mr-2" />
+                <span className="font-medium">Two-Factor Authentication (your account)</span>
+              </div>
+              {!user?.twoFactorEnabled && !twoFactorSetupInProgress && (
+                <div className="space-y-3">
+                  <p className="text-sm text-gray-600">Add an extra layer of security by requiring a code from an authenticator app when you sign in.</p>
+                  <Button onClick={startTwoFactorSetup} disabled={twoFactorLoading}>
+                    {twoFactorLoading ? 'Starting…' : 'Enable Two-Factor'}
+                  </Button>
+                </div>
+              )}
+              {twoFactorSetupInProgress && (
+                <div className="space-y-3">
+                  {qrDataUrl && (
+                    <img src={qrDataUrl} alt="Scan QR code with authenticator app" className="w-40 h-40" />
+                  )}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Enter 6-digit code</label>
+                    <input
+                      className="w-full p-2 border border-gray-300 rounded-md"
+                      inputMode="numeric"
+                      pattern="[0-9]*"
+                      maxLength={6}
+                      value={twoFactorCode}
+                      onChange={(e) => setTwoFactorCode(e.target.value)}
+                      placeholder="123456"
+                    />
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <Button onClick={verifyTwoFactorSetup} disabled={twoFactorLoading}>
+                      <CheckCircle className="w-4 h-4 mr-2" />
+                      {twoFactorLoading ? 'Verifying…' : 'Verify & Enable'}
+                    </Button>
+                    <Button variant="secondary" onClick={() => { setTwoFactorSetupInProgress(false); setQrDataUrl(null); setTwoFactorCode(''); }} disabled={twoFactorLoading}>
+                      <XCircle className="w-4 h-4 mr-2" />
+                      Cancel
+                    </Button>
+                  </div>
+                </div>
+              )}
+              {user?.twoFactorEnabled && !twoFactorSetupInProgress && (
+                <div className="space-y-3">
+                  <div className="text-sm text-green-700">Two-factor is enabled on your account.</div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Enter current 6-digit code to disable</label>
+                    <input
+                      className="w-full p-2 border border-gray-300 rounded-md"
+                      inputMode="numeric"
+                      pattern="[0-9]*"
+                      maxLength={6}
+                      value={twoFactorCode}
+                      onChange={(e) => setTwoFactorCode(e.target.value)}
+                      placeholder="123456"
+                    />
+                  </div>
+                  <Button onClick={disableTwoFactor} disabled={twoFactorLoading}>
+                    {twoFactorLoading ? 'Disabling…' : 'Disable Two-Factor'}
+                  </Button>
+                </div>
+              )}
+              {twoFactorMessage && (
+                <div className="mt-2 text-sm text-gray-700">{twoFactorMessage}</div>
+              )}
             </div>
           </CardContent>
         </Card>

@@ -70,7 +70,8 @@ export function Sidebar({
   theme = 'light',
   onThemeChange 
 }: SidebarProps) {
-  const { user, logout } = useAuth();
+  const { user, logout, theme: ctxTheme, toggleTheme } = useAuth();
+  const effectiveTheme = (theme as 'light' | 'dark') || ctxTheme;
   
   // Enhanced state management
   const [expandedCategories, setExpandedCategories] = useState<string[]>(['main']);
@@ -656,7 +657,7 @@ export function Sidebar({
 
         {/* Children */}
         {hasChildren && isExpanded && !collapsed && (
-          <div className="ml-6 mt-2 space-y-1 border-l-2 border-gray-200 pl-4">
+          <div className="ml-6 mt-2 space-y-1 border-l-2 border-gray-200 dark:border-gray-800 pl-4">
             {item.children!.map(child => renderMenuItem(child, level + 1))}
           </div>
         )}
@@ -725,8 +726,8 @@ export function Sidebar({
     <>
       {/* Responsive sidebar container */}
       <div className={clsx(
-        'h-full bg-white border-r border-gray-200 flex flex-col transition-all duration-300 shadow-xl relative',
-        'backdrop-blur-sm bg-white/95',
+        'h-full bg-white dark:bg-gray-900 border-r border-gray-200 dark:border-gray-800 flex flex-col transition-all duration-300 shadow-xl relative',
+        'backdrop-blur-sm bg-white/95 dark:bg-gray-900/95',
         'md:static md:translate-x-0 fixed top-0 left-0 z-40',
         {
           'w-80': !collapsed,
@@ -734,7 +735,7 @@ export function Sidebar({
         }
       )}>
         {/* Enhanced Header - Fixed height */}
-        <div className="flex-shrink-0 p-6 border-b border-gray-200 bg-gradient-to-r from-blue-600 to-purple-600 text-white relative">
+        <div className="flex-shrink-0 p-6 border-b border-gray-200 dark:border-gray-800 bg-gradient-to-r from-blue-600 to-purple-600 text-white relative">
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-3">
               <div className="w-12 h-12 bg-white bg-opacity-20 rounded-xl flex items-center justify-center backdrop-blur">
@@ -760,11 +761,11 @@ export function Sidebar({
             <div className="flex items-center space-x-2">
               {!collapsed && (
                 <button
-                  onClick={() => onThemeChange?.(theme === 'light' ? 'dark' : 'light')}
+                  onClick={() => (onThemeChange ? onThemeChange(effectiveTheme === 'light' ? 'dark' : 'light') : toggleTheme())}
                   className="p-2 hover:bg-white hover:bg-opacity-20 rounded-lg transition-colors"
                   title="Toggle theme"
                 >
-                  {theme === 'light' ? <Moon className="w-4 h-4" /> : <Sun className="w-4 h-4" />}
+                  {effectiveTheme === 'light' ? <Moon className="w-4 h-4" /> : <Sun className="w-4 h-4" />}
                 </button>
               )}
               
@@ -801,7 +802,7 @@ export function Sidebar({
         )}
 
         {/* Enhanced Navigation - Flexible height with proper scrolling */}
-        <nav className="flex-1 p-4 space-y-3 overflow-y-auto custom-scrollbar min-h-0">
+        <nav className="flex-1 p-4 space-y-3 overflow-y-auto custom-scrollbar min-h-0 text-gray-800 dark:text-gray-100">
           {/* Grouped Menu Items */}
           {Object.entries(groupedMenuItems).map(([category, items]) => {
             const isExpanded = expandedCategories.includes(category);

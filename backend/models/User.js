@@ -54,6 +54,33 @@ const userSchema = new mongoose.Schema({
   lastLogin: {
     type: Date
   },
+  twoFactorEnabled: {
+    type: Boolean,
+    default: false
+  },
+  twoFactorMethod: {
+    type: String,
+    enum: ['totp', 'sms', null],
+    default: null
+  },
+  twoFactorSecret: {
+    type: String,
+    select: false
+  },
+  twoFactorTempSecret: {
+    type: String,
+    select: false
+  },
+  twoFactorPhone: {
+    type: String
+  },
+  twoFactorSMSCode: {
+    type: String,
+    select: false
+  },
+  twoFactorSMSExpiresAt: {
+    type: Date
+  },
   approvedBy: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User'

@@ -11,6 +11,7 @@ export interface User {
   createdAt: string;
   adminPrograms?: string[];
   program?: string;
+  twoFactorEnabled?: boolean;
 }
 
 export type UserRole = 'student' | 'faculty' | 'admin' | 'library' | 'placement';

@@ -1,7 +1,12 @@
 import React, { useState } from 'react';
-import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { useAuth, AuthProvider } from './contexts/AuthContext';
 import { LoginForm } from './components/auth/LoginForm';
+import MobileLanding from './components/auth/MobileLanding';
+import MobileRegister from './components/auth/MobileRegister';
+import MobileLogin from './components/auth/MobileLogin';
+import MobileForgotPassword from './components/auth/MobileForgotPassword';
+import MobileResetPassword from './components/auth/MobileResetPassword';
 import { Sidebar } from './components/layout/Sidebar';
 import { Header } from './components/layout/Header';
 import { StudentDashboard } from './components/dashboard/StudentDashboard';
@@ -33,6 +38,7 @@ import { ParentPortal } from './components/modules/ParentPortal';
 
 function AppContent() {
   const { user, isLoading } = useAuth();
+  const isMobile = typeof window !== 'undefined' && window.matchMedia('(max-width: 767px)').matches;
   const [activeTab, setActiveTab] = useState('dashboard');
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -60,7 +66,14 @@ function AppContent() {
   return (
     <Routes>
       <Route path="/request-verification" element={<RequestVerificationPage />} />
-      <Route path="/*" element={
+      <Route path="/login" element={user ? <Navigate to="/app" replace /> : <LoginForm />} />
+      {/* Root route: show mobile landing on phones, login on desktop; redirect to app when authenticated */}
+      <Route path="/" element={user ? <Navigate to="/app" replace /> : (isMobile ? <MobileLanding /> : <LoginForm />)} />
+      <Route path="/mobile/login" element={<MobileLogin />} />
+      <Route path="/mobile/register" element={<MobileRegister />} />
+      <Route path="/mobile/forgot-password" element={<MobileForgotPassword />} />
+      <Route path="/mobile/reset-password" element={<MobileResetPassword />} />
+      <Route path="/app" element={
         !user ? <LoginForm /> : (
           <div className="min-h-screen bg-gray-100 flex">
             {/* Sidebar */}
@@ -76,7 +89,7 @@ function AppContent() {
             </div>
             
             {/* Main Content Area with dynamic left margin */}
-            <div className={`flex-1 flex flex-col transition-all duration-300 ${sidebarCollapsed ? 'md:ml-20' : 'md:ml-80'} ml-0`}>
+            <div className={`flex-1 flex flex-col transition-all duration-300 ${sidebarCollapsed ? 'md:ml-20' : 'md:ml-80'} ml-0 bg-white dark:bg-gray-900`}>
               <Header 
                 onNotificationClick={handleNotificationClick}
                 unreadCount={unreadNotificationCount}
@@ -162,6 +175,8 @@ function AppContent() {
           </div>
         )
       } />
+      {/* Fallback: anything else goes to app if logged in, otherwise to login */}
+      <Route path="/*" element={user ? <Navigate to="/app" replace /> : <Navigate to="/login" replace />} />
     </Routes>
   );
 }

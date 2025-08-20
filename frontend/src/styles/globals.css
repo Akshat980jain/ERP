@@ -6,6 +6,11 @@ html, body {
   overflow-x: hidden;
 }
 
+/* Global font family aligning with mobile landing */
+body {
+  font-family: Inter, "Noto Sans", ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji";
+}
+
 /* Mobile menu backdrop */
 .mobile-backdrop {
   position: fixed;

@@ -69,7 +69,12 @@ export function LoginForm() {
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' | 'info' } | null>(null);
 
   // Only destructure what you actually use from useAuth
-  const { login, isLoading } = useAuth();
+  const { login, verifyTwoFactor, isLoading } = useAuth();
+  const [twoFactorRequired, setTwoFactorRequired] = useState(false);
+  const [tempToken, setTempToken] = useState<string | null>(null);
+  const [twoFactorMethod, setTwoFactorMethod] = useState<'totp' | 'sms'>('totp');
+  const [maskedPhone, setMaskedPhone] = useState<string | undefined>(undefined);
+  const [devCode, setDevCode] = useState<string | undefined>(undefined);
 
   const {
     register,
@@ -102,7 +107,27 @@ export function LoginForm() {
         return;
       }
 
-      // Call login with proper error handling
+      if (twoFactorRequired && tempToken) {
+        // Verify 2FA code
+        if (!data.twoFactorCode || data.twoFactorCode.trim().length < 6) {
+          showToast('Enter the 6-digit authentication code.', 'error');
+          return;
+        }
+        const verifyResult = await verifyTwoFactor(tempToken, data.twoFactorCode.trim());
+        if (verifyResult.success) {
+          showToast('Login successful! Welcome back.', 'success');
+          reset();
+          setTwoFactorRequired(false);
+          setTempToken(null);
+          return;
+        } else {
+          showToast(verifyResult.message || 'Invalid code. Try again.', 'error');
+          setValue('twoFactorCode', '');
+          return;
+        }
+      }
+
+      // First step: password login
       const result = await login(data.email, data.password);
 
       console.log('Login attempt completed. Success:', result?.success);
@@ -111,6 +136,17 @@ export function LoginForm() {
       if (result && result.success) {
         showToast('Login successful! Welcome back.', 'success');
         reset();
+        return;
+      }
+
+      if (result?.twoFactorRequired && result?.tempToken) {
+        setTwoFactorRequired(true);
+        setTempToken(result.tempToken);
+        setTwoFactorMethod(result.method || 'totp');
+        setMaskedPhone(result.maskedPhone);
+        setDevCode(result.devCode);
+        const msg = result.method === 'sms' ? `Enter the code sent to ${result.maskedPhone || 'your phone'}.` : 'Enter your authentication code to continue.';
+        showToast(msg, 'info');
         return;
       }
 
@@ -236,6 +272,33 @@ export function LoginForm() {
                 </div>
               )}
             </div>
+
+            {twoFactorRequired && (
+              <div className="space-y-2">
+                <label className="block text-sm font-semibold text-gray-700">{twoFactorMethod === 'sms' ? `Enter code sent to ${maskedPhone || 'your phone'}` : 'Authentication code'}</label>
+                <div className="relative">
+                  <input
+                    {...register('twoFactorCode')}
+                    inputMode="numeric"
+                    pattern="[0-9]*"
+                    maxLength={6}
+                    className={`w-full pl-4 pr-4 py-3 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 ${errors.twoFactorCode ? 'border-red-500 bg-red-50' : 'border-gray-300 hover:border-gray-400'}`}
+                    placeholder="6-digit code"
+                  />
+                </div>
+                {devCode && (
+                  <div className="text-xs text-yellow-800 bg-yellow-50 border border-yellow-200 rounded p-2">
+                    Dev mode: code is <span className="font-semibold">{devCode}</span>
+                  </div>
+                )}
+                {errors.twoFactorCode && (
+                  <div className="flex items-center space-x-1 text-red-600 text-sm mt-1">
+                    <AlertCircle className="w-4 h-4" />
+                    <span>{errors.twoFactorCode.message}</span>
+                  </div>
+                )}
+              </div>
+            )}
             
             <div className="flex items-center justify-between">
               <label className="flex items-center space-x-2 cursor-pointer">
@@ -263,10 +326,10 @@ export function LoginForm() {
               {(isSubmitting || isLoading) ? (
                 <div className="flex items-center justify-center space-x-2">
                   <span className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin"></span>
-                  <span>Signing In...</span>
+                  <span>{twoFactorRequired ? 'Verifying Code...' : 'Signing In...'}</span>
                 </div>
               ) : (
-                'Sign In'
+                twoFactorRequired ? 'Verify Code' : 'Sign In'
               )}
             </button>
             
@@ -296,6 +359,57 @@ export function LoginForm() {
               />
             )}
           </AnimatePresence>
+
+          {/* 2FA Modal (blocks view to ensure visibility) */}
+          {twoFactorRequired && (
+            <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+              <div className="bg-white w-full max-w-sm rounded-xl shadow-xl p-6 space-y-4">
+                <h3 className="text-lg font-semibold">Two-Factor Authentication</h3>
+                <p className="text-sm text-gray-600">
+                  {twoFactorMethod === 'sms'
+                    ? `Enter the 6-digit code sent to ${maskedPhone || 'your phone'}.`
+                    : 'Open your authenticator app and enter the 6-digit code.'}
+                </p>
+                {devCode && (
+                  <div className="text-xs text-yellow-800 bg-yellow-50 border border-yellow-200 rounded p-2">
+                    Dev mode: code is <span className="font-semibold">{devCode}</span>
+                  </div>
+                )}
+                <input
+                  {...register('twoFactorCode')}
+                  inputMode="numeric"
+                  pattern="[0-9]*"
+                  maxLength={6}
+                  autoFocus
+                  className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ${errors.twoFactorCode ? 'border-red-500 bg-red-50' : 'border-gray-300'}`}
+                  placeholder="6-digit code"
+                />
+                {errors.twoFactorCode && (
+                  <div className="flex items-center space-x-1 text-red-600 text-sm">
+                    <AlertCircle className="w-4 h-4" />
+                    <span>{errors.twoFactorCode.message}</span>
+                  </div>
+                )}
+                <div className="flex items-center justify-end space-x-2">
+                  <button
+                    type="button"
+                    onClick={() => { setTwoFactorRequired(false); setTempToken(null); setValue('twoFactorCode', ''); }}
+                    className="px-3 py-2 text-sm rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleSubmit(onSubmit)}
+                    className="px-4 py-2 text-sm rounded-lg bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50"
+                    disabled={isSubmitting || isLoading}
+                  >
+                    {isSubmitting || isLoading ? 'Verifying…' : 'Verify Code'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </div>

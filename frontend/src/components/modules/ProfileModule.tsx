@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { User, Mail, Phone, MapPin, Calendar, Edit, Save, X, Camera, Shield, Key } from 'lucide-react';
+import { User, Mail, Phone, MapPin, Calendar, Edit, Save, X, Camera, Shield, Key, QrCode, CheckCircle, XCircle } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardContent } from '../ui/Card';
 import { Button } from '../ui/Button';
 import { Input } from '../ui/Input';
@@ -29,6 +29,17 @@ export function ProfileModule() {
     newPassword: '',
     confirmPassword: '',
   });
+
+  // 2FA local state
+  const [twoFactorSetupInProgress, setTwoFactorSetupInProgress] = useState(false);
+  const [twoFactorCode, setTwoFactorCode] = useState('');
+  const [qrDataUrl, setQrDataUrl] = useState<string | null>(null);
+  const [twoFactorLoading, setTwoFactorLoading] = useState(false);
+  const [twoFactorMessage, setTwoFactorMessage] = useState<string | null>(null);
+  const [twoFactorMethod, setTwoFactorMethod] = useState<'totp' | 'sms'>('totp');
+  const [phoneInput, setPhoneInput] = useState('');
+  const [devCode, setDevCode] = useState<string | null>(null);
+  const [devDisableCode, setDevDisableCode] = useState<string | null>(null);
 
   // Initialize form data when user data changes
   useEffect(() => {
@@ -94,6 +105,82 @@ export function ProfileModule() {
     }
     alert('Password updated successfully!');
     setPasswordData({ currentPassword: '', newPassword: '', confirmPassword: '' });
+  };
+
+  // 2FA actions
+  const startTwoFactorSetup = async () => {
+    try {
+      setTwoFactorLoading(true);
+      setTwoFactorMessage(null);
+      const resp = await apiClient.initiate2FASetup(
+        twoFactorMethod === 'sms' ? { method: 'sms', phone: phoneInput } : { method: 'totp' }
+      );
+      if (resp.method === 'totp') {
+        setQrDataUrl(resp.qrDataUrl);
+      } else {
+        setQrDataUrl(null);
+      }
+      setDevCode(resp.devCode || null);
+      setTwoFactorSetupInProgress(true);
+    } catch (e: any) {
+      setTwoFactorMessage(e?.message || 'Failed to start 2FA setup');
+    } finally {
+      setTwoFactorLoading(false);
+    }
+  };
+
+  const verifyTwoFactorSetup = async () => {
+    if (!twoFactorCode || twoFactorCode.trim().length < 6) {
+      setTwoFactorMessage('Enter the 6-digit code from your authenticator app.');
+      return;
+    }
+    try {
+      setTwoFactorLoading(true);
+      setTwoFactorMessage(null);
+      await apiClient.verify2FASetup(twoFactorCode.trim(), twoFactorMethod);
+      setTwoFactorSetupInProgress(false);
+      setQrDataUrl(null);
+      setTwoFactorCode('');
+      setDevCode(null);
+      if (user) updateUser({ ...user, twoFactorEnabled: true });
+      setTwoFactorMessage(`Two-factor authentication (${twoFactorMethod.toUpperCase()}) enabled.`);
+    } catch (e: any) {
+      setTwoFactorMessage(e?.message || 'Invalid code. Please try again.');
+    } finally {
+      setTwoFactorLoading(false);
+    }
+  };
+
+  const disableTwoFactor = async () => {
+    if (!twoFactorCode || twoFactorCode.trim().length < 6) {
+      setTwoFactorMessage('Enter your current 6-digit code to disable.');
+      return;
+    }
+    try {
+      setTwoFactorLoading(true);
+      setTwoFactorMessage(null);
+      await apiClient.disable2FA(twoFactorCode.trim());
+      setTwoFactorCode('');
+      if (user) updateUser({ ...user, twoFactorEnabled: false });
+      setTwoFactorMessage('Two-factor authentication disabled.');
+    } catch (e: any) {
+      setTwoFactorMessage(e?.message || 'Failed to disable 2FA');
+    } finally {
+      setTwoFactorLoading(false);
+    }
+  };
+
+  const resendDisableCode = async () => {
+    try {
+      setTwoFactorLoading(true);
+      const resp = await apiClient.resend2FACode();
+      setDevDisableCode(resp.devCode || null);
+      setTwoFactorMessage('A new code has been sent.');
+    } catch (e: any) {
+      setTwoFactorMessage(e?.message || 'Failed to resend code');
+    } finally {
+      setTwoFactorLoading(false);
+    }
   };
 
   // Generate department display text
@@ -407,17 +494,132 @@ export function ProfileModule() {
             </CardHeader>
             <CardContent>
               <div className="space-y-4">
-                <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
-                  <div className="flex items-center space-x-3">
-                    <Shield className="w-5 h-5 text-green-500" />
-                    <div>
-                      <p className="font-medium text-gray-900">Two-Factor Authentication</p>
-                      <p className="text-sm text-gray-600">Add an extra layer of security to your account</p>
-                    </div>
+                <div className="p-4 bg-gray-50 rounded-lg">
+                  <div className="flex items-center mb-3">
+                    <Shield className="w-5 h-5 text-green-500 mr-2" />
+                    <p className="font-medium text-gray-900">Two-Factor Authentication</p>
                   </div>
-                  <Button variant="outline" size="sm">
-                    Enable
-                  </Button>
+                  {!user?.twoFactorEnabled && !twoFactorSetupInProgress && (
+                    <div className="flex items-center justify-between">
+                      <div className="text-sm text-gray-600">Add an extra layer of security to your account</div>
+                      <div className="flex items-center space-x-2">
+                        <select
+                          className="border border-gray-300 rounded-md text-sm p-1"
+                          value={twoFactorMethod}
+                          onChange={(e) => setTwoFactorMethod(e.target.value as 'totp' | 'sms')}
+                        >
+                          <option value="totp">Authenticator App</option>
+                          <option value="sms">SMS</option>
+                        </select>
+                        {twoFactorMethod === 'sms' && (
+                          <input
+                            className="border border-gray-300 rounded-md text-sm p-1"
+                            placeholder="Phone number"
+                            value={phoneInput}
+                            onChange={(e) => setPhoneInput(e.target.value)}
+                          />
+                        )}
+                        <Button variant="outline" size="sm" onClick={startTwoFactorSetup} disabled={twoFactorLoading}>
+                          {twoFactorLoading ? 'Starting…' : 'Enable'}
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+                  {twoFactorSetupInProgress && (
+                    <div className="space-y-3">
+                      {twoFactorMethod === 'totp' && (
+                        <>
+                          <div className="flex items-center space-x-3">
+                            <QrCode className="w-5 h-5 text-gray-600" />
+                            <span className="text-sm text-gray-700">Scan this QR with Google Authenticator or Authy, then enter the 6-digit code.</span>
+                          </div>
+                          {qrDataUrl && (
+                            <img src={qrDataUrl} alt="Scan QR code" className="w-40 h-40" />
+                          )}
+                        </>
+                      )}
+                      {twoFactorMethod === 'sms' && (
+                        <div className="flex items-center justify-between">
+                          <div className="text-sm text-gray-700">A 6-digit code was sent to your phone. Enter it below.</div>
+                          <Button size="sm" variant="outline" onClick={startTwoFactorSetup} disabled={twoFactorLoading}>
+                            Resend Code
+                          </Button>
+                        </div>
+                      )}
+                      {devCode && (
+                        <div className="p-3 bg-yellow-50 border border-yellow-200 rounded text-sm text-yellow-800">
+                          Dev mode: Your code is <span className="font-semibold">{devCode}</span>.
+                          <button
+                            type="button"
+                            className="ml-2 underline"
+                            onClick={() => navigator.clipboard.writeText(devCode)}
+                          >
+                            Copy
+                          </button>
+                        </div>
+                      )}
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Authentication code</label>
+                        <input
+                          className="w-full p-2 border border-gray-300 rounded-md"
+                          inputMode="numeric"
+                          pattern="[0-9]*"
+                          maxLength={6}
+                          value={twoFactorCode}
+                          onChange={(e) => setTwoFactorCode(e.target.value)}
+                          placeholder="123456"
+                        />
+                      </div>
+                      <div className="flex items-center space-x-2">
+                        <Button size="sm" onClick={verifyTwoFactorSetup} disabled={twoFactorLoading}>
+                          <CheckCircle className="w-4 h-4 mr-2" />
+                          {twoFactorLoading ? 'Verifying…' : 'Verify & Enable'}
+                        </Button>
+                        <Button size="sm" variant="outline" onClick={() => { setTwoFactorSetupInProgress(false); setQrDataUrl(null); setTwoFactorCode(''); }} disabled={twoFactorLoading}>
+                          <XCircle className="w-4 h-4 mr-2" />
+                          Cancel
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+                  {user?.twoFactorEnabled && !twoFactorSetupInProgress && (
+                    <div className="space-y-3">
+                      <div className="text-sm text-green-700">Two-factor is enabled on your account.</div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Enter current 6-digit code to disable</label>
+                        <input
+                          className="w-full p-2 border border-gray-300 rounded-md"
+                          inputMode="numeric"
+                          pattern="[0-9]*"
+                          maxLength={6}
+                          value={twoFactorCode}
+                          onChange={(e) => setTwoFactorCode(e.target.value)}
+                          placeholder="123456"
+                        />
+                      </div>
+                      {devDisableCode && (
+                        <div className="p-3 bg-yellow-50 border border-yellow-200 rounded text-sm text-yellow-800">
+                          Dev mode: Your disable code is <span className="font-semibold">{devDisableCode}</span>.
+                          <button
+                            type="button"
+                            className="ml-2 underline"
+                            onClick={() => navigator.clipboard.writeText(devDisableCode)}
+                          >
+                            Copy
+                          </button>
+                        </div>
+                      )}
+                      <Button size="sm" variant="outline" onClick={disableTwoFactor} disabled={twoFactorLoading}>
+                        {twoFactorLoading ? 'Disabling…' : 'Disable Two-Factor'}
+                      </Button>
+                      <Button size="sm" variant="outline" onClick={resendDisableCode} disabled={twoFactorLoading}>
+                        Resend Code
+                      </Button>
+                    </div>
+                  )}
+                  {twoFactorMessage && (
+                    <div className="mt-2 text-sm text-gray-700">{twoFactorMessage}</div>
+                  )}
                 </div>
 
                 <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">

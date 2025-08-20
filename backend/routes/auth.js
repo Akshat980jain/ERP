@@ -6,6 +6,8 @@ const { auth, authorize } = require('../middleware/auth');
 const bcrypt = require('bcryptjs');
 const Course = require('../models/Course');
 const Fee = require('../models/Fee');
+const speakeasy = require('speakeasy');
+const QRCode = require('qrcode');
 
 const router = express.Router();
 
@@ -28,6 +30,12 @@ const generateToken = (id) => {
     console.error('Token generation error:', error);
     throw error;
   }
+};
+
+// Generate short-lived token for pending 2FA verification during login
+const generateTwoFactorTempToken = (id) => {
+  const secret = process.env.JWT_SECRET || 'your-secret-key';
+  return jwt.sign({ id, twoFactorPending: true }, secret, { expiresIn: '10m' });
 };
 
 // @route   POST /api/auth/register
@@ -331,9 +339,46 @@ router.post('/login', async (req, res) => {
 
     console.log('Generating JWT token...');
 
-    // Generate token
+    // If user has 2FA enabled, require verification first
+    if (user.twoFactorEnabled) {
+      console.log('User has 2FA enabled, sending temp token');
+      const tempToken = generateTwoFactorTempToken(user._id);
+
+      // If SMS method, generate and send one-time code
+      if (user.twoFactorMethod === 'sms') {
+        try {
+          const smsCode = String(Math.floor(100000 + Math.random() * 900000));
+          user.twoFactorSMSCode = smsCode;
+          user.twoFactorSMSExpiresAt = new Date(Date.now() + 10 * 60 * 1000);
+          await user.save();
+
+          let devCodeToReturn = null;
+          if (process.env.TWILIO_ACCOUNT_SID && process.env.TWILIO_AUTH_TOKEN && process.env.TWILIO_FROM_NUMBER && user.twoFactorPhone) {
+            const twilio = require('twilio')(process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TOKEN);
+            await twilio.messages.create({
+              to: user.twoFactorPhone,
+              from: process.env.TWILIO_FROM_NUMBER,
+              body: `Your EduConnect login code is ${smsCode}`
+            });
+          } else {
+            console.log('Twilio not configured or phone missing. SMS code:', smsCode);
+            if ((process.env.NODE_ENV || 'development') !== 'production') {
+              devCodeToReturn = smsCode;
+            }
+          }
+        } catch (e) {
+          console.error('SMS send error:', e.message);
+        }
+
+        return res.json({ success: true, twoFactorRequired: true, tempToken, method: 'sms', maskedPhone: maskPhone(user.twoFactorPhone), devCode: ((process.env.NODE_ENV || 'development') !== 'production') ? user.twoFactorSMSCode : undefined });
+      }
+
+      // Default TOTP
+      return res.json({ success: true, twoFactorRequired: true, tempToken, method: 'totp' });
+    }
+
+    // Generate token (no 2FA)
     const token = generateToken(user._id);
-    
     console.log('Token generated successfully');
 
     // Remove password from response
@@ -354,6 +399,238 @@ router.post('/login', async (req, res) => {
       success: false,
       message: 'Server error. Please try again later.' 
     });
+  }
+});
+
+// =========================
+// Two-Factor Authentication
+// =========================
+
+const maskPhone = (phone) => {
+  if (!phone) return null;
+  const digits = phone.replace(/\D/g, '');
+  if (digits.length < 4) return phone;
+  return phone.slice(0, -4).replace(/\d/g, '*') + phone.slice(-4);
+};
+
+// @route   POST /api/auth/2fa/setup
+// @desc    Initiate 2FA setup (TOTP or SMS). Returns QR for TOTP or sends SMS code.
+// @access  Private
+router.post('/2fa/setup', auth, async (req, res) => {
+  try {
+    const { method = 'totp', phone } = req.body || {};
+    const user = await User.findById(req.user.id);
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'User not found' });
+    }
+
+    if (method === 'sms') {
+      if (!phone) {
+        return res.status(400).json({ success: false, message: 'Phone number is required' });
+      }
+      user.twoFactorPhone = phone;
+      const smsCode = String(Math.floor(100000 + Math.random() * 900000));
+      user.twoFactorSMSCode = smsCode;
+      user.twoFactorSMSExpiresAt = new Date(Date.now() + 10 * 60 * 1000);
+      await user.save();
+
+      try {
+        if (process.env.TWILIO_ACCOUNT_SID && process.env.TWILIO_AUTH_TOKEN && process.env.TWILIO_FROM_NUMBER) {
+          const twilio = require('twilio')(process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TOKEN);
+          await twilio.messages.create({ to: phone, from: process.env.TWILIO_FROM_NUMBER, body: `Your EduConnect verification code is ${smsCode}` });
+        } else {
+          console.log('Twilio not configured. SMS code:', smsCode);
+        }
+      } catch (e) {
+        console.error('SMS send error:', e.message);
+      }
+
+      return res.json({ success: true, method: 'sms', maskedPhone: maskPhone(phone), devCode: ((process.env.NODE_ENV || 'development') !== 'production') ? smsCode : undefined });
+    }
+
+    // Default TOTP setup
+    const secret = speakeasy.generateSecret({ length: 20, name: `EduConnect (${user.email})` });
+    user.twoFactorTempSecret = secret.base32;
+    await user.save();
+
+    const otpauthUrl = secret.otpauth_url;
+    const qrDataUrl = await QRCode.toDataURL(otpauthUrl);
+    res.json({ success: true, method: 'totp', otpauthUrl, qrDataUrl, base32: secret.base32 });
+  } catch (error) {
+    console.error('2FA setup error:', error);
+    res.status(500).json({ success: false, message: 'Server error' });
+  }
+});
+
+// @route   POST /api/auth/2fa/verify-setup
+// @desc    Verify TOTP against temp secret and enable 2FA
+// @access  Private
+router.post('/2fa/verify-setup', auth, async (req, res) => {
+  try {
+    const { code, method = 'totp' } = req.body;
+    if (!code) {
+      return res.status(400).json({ success: false, message: 'Code is required' });
+    }
+    if (method === 'sms') {
+      const user = await User.findById(req.user.id).select('+twoFactorSMSCode');
+      if (!user || !user.twoFactorSMSCode) {
+        return res.status(400).json({ success: false, message: 'No SMS setup in progress' });
+      }
+      if (!user.twoFactorSMSExpiresAt || user.twoFactorSMSExpiresAt < new Date()) {
+        return res.status(400).json({ success: false, message: 'Code expired' });
+      }
+      if (user.twoFactorSMSCode !== code) {
+        return res.status(400).json({ success: false, message: 'Invalid code' });
+      }
+      user.twoFactorEnabled = true;
+      user.twoFactorMethod = 'sms';
+      user.twoFactorSMSCode = undefined;
+      user.twoFactorSMSExpiresAt = undefined;
+      await user.save();
+      return res.json({ success: true, message: 'Two-factor authentication (SMS) enabled' });
+    }
+
+    const user = await User.findById(req.user.id).select('+twoFactorTempSecret');
+    if (!user || !user.twoFactorTempSecret) {
+      return res.status(400).json({ success: false, message: 'No 2FA setup in progress' });
+    }
+    const verified = speakeasy.totp.verify({ secret: user.twoFactorTempSecret, encoding: 'base32', token: code, window: 1 });
+    if (!verified) return res.status(400).json({ success: false, message: 'Invalid code' });
+    user.twoFactorSecret = user.twoFactorTempSecret;
+    user.twoFactorTempSecret = undefined;
+    user.twoFactorEnabled = true;
+    user.twoFactorMethod = 'totp';
+    await user.save();
+    res.json({ success: true, message: 'Two-factor authentication enabled' });
+  } catch (error) {
+    console.error('2FA verify setup error:', error);
+    res.status(500).json({ success: false, message: 'Server error' });
+  }
+});
+
+// @route   POST /api/auth/2fa/disable
+// @desc    Disable 2FA after validating current TOTP code
+// @access  Private
+router.post('/2fa/disable', auth, async (req, res) => {
+  try {
+    const { code } = req.body;
+    const user = await User.findById(req.user.id).select('+twoFactorSecret +twoFactorSMSCode');
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'User not found' });
+    }
+    if (!user.twoFactorEnabled || (!user.twoFactorSecret && !user.twoFactorPhone)) {
+      return res.status(400).json({ success: false, message: 'Two-factor is not enabled' });
+    }
+
+    let verified = false;
+    if (user.twoFactorMethod === 'sms') {
+      if (!user.twoFactorSMSCode || !user.twoFactorSMSExpiresAt || user.twoFactorSMSExpiresAt < new Date() || user.twoFactorSMSCode !== code) {
+        return res.status(400).json({ success: false, message: 'Invalid or expired code' });
+      }
+      verified = true;
+    } else if (user.twoFactorSecret) {
+      verified = speakeasy.totp.verify({ secret: user.twoFactorSecret, encoding: 'base32', token: code, window: 1 });
+      if (!verified) return res.status(400).json({ success: false, message: 'Invalid code' });
+    }
+
+    user.twoFactorEnabled = false;
+    user.twoFactorSecret = undefined;
+    user.twoFactorTempSecret = undefined;
+    user.twoFactorMethod = null;
+    await user.save();
+
+    res.json({ success: true, message: 'Two-factor authentication disabled' });
+  } catch (error) {
+    console.error('2FA disable error:', error);
+    res.status(500).json({ success: false, message: 'Server error' });
+  }
+});
+
+// @route   POST /api/auth/2fa/verify-login
+// @desc    Verify TOTP during login and issue full JWT
+// @access  Public (uses temp token)
+router.post('/2fa/verify-login', async (req, res) => {
+  try {
+    const { tempToken, code } = req.body;
+    if (!tempToken || !code) {
+      return res.status(400).json({ success: false, message: 'tempToken and code are required' });
+    }
+
+    const secret = process.env.JWT_SECRET || 'your-secret-key';
+    let decoded;
+    try {
+      decoded = jwt.verify(tempToken, secret);
+    } catch (e) {
+      return res.status(401).json({ success: false, message: 'Invalid or expired temp token' });
+    }
+
+    if (!decoded.twoFactorPending || !decoded.id) {
+      return res.status(400).json({ success: false, message: 'Invalid temp token' });
+    }
+
+    const user = await User.findById(decoded.id).select('+twoFactorSecret +twoFactorSMSCode +password');
+    if (!user || !user.twoFactorEnabled) {
+      return res.status(400).json({ success: false, message: 'Two-factor not enabled for user' });
+    }
+
+    let verified = false;
+    if (user.twoFactorMethod === 'sms') {
+      if (!user.twoFactorSMSCode || !user.twoFactorSMSExpiresAt || user.twoFactorSMSExpiresAt < new Date() || user.twoFactorSMSCode !== code) {
+        return res.status(400).json({ success: false, message: 'Invalid or expired code' });
+      }
+      verified = true;
+      // Clear used SMS code
+      user.twoFactorSMSCode = undefined;
+      user.twoFactorSMSExpiresAt = undefined;
+    } else {
+      if (!user.twoFactorSecret) return res.status(400).json({ success: false, message: 'Two-factor not enabled for user' });
+      verified = speakeasy.totp.verify({ secret: user.twoFactorSecret, encoding: 'base32', token: code, window: 1 });
+      if (!verified) return res.status(400).json({ success: false, message: 'Invalid code' });
+    }
+
+    // Update last login
+    user.lastLogin = new Date();
+    await user.save();
+
+    // Issue full JWT
+    const token = generateToken(user._id);
+    const userResponse = user.toObject();
+    delete userResponse.password;
+
+    res.json({ success: true, token, user: userResponse });
+  } catch (error) {
+    console.error('2FA verify login error:', error);
+    res.status(500).json({ success: false, message: 'Server error' });
+  }
+});
+
+// Resend SMS code during setup (authenticated) or login (with temp token)
+router.post('/2fa/resend', auth, async (req, res) => {
+  try {
+    const user = await User.findById(req.user.id);
+    if (!user || user.twoFactorMethod !== 'sms' || !user.twoFactorPhone) {
+      return res.status(400).json({ success: false, message: 'SMS 2FA not configured' });
+    }
+    const smsCode = String(Math.floor(100000 + Math.random() * 900000));
+    user.twoFactorSMSCode = smsCode;
+    user.twoFactorSMSExpiresAt = new Date(Date.now() + 10 * 60 * 1000);
+    await user.save();
+
+    try {
+      if (process.env.TWILIO_ACCOUNT_SID && process.env.TWILIO_AUTH_TOKEN && process.env.TWILIO_FROM_NUMBER) {
+        const twilio = require('twilio')(process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TOKEN);
+        await twilio.messages.create({ to: user.twoFactorPhone, from: process.env.TWILIO_FROM_NUMBER, body: `Your EduConnect verification code is ${smsCode}` });
+      } else {
+        console.log('Twilio not configured. SMS code:', smsCode);
+      }
+    } catch (e) {
+      console.error('SMS send error:', e.message);
+    }
+
+    res.json({ success: true, maskedPhone: maskPhone(user.twoFactorPhone), devCode: ((process.env.NODE_ENV || 'development') !== 'production') ? smsCode : undefined });
+  } catch (error) {
+    console.error('2FA resend error:', error);
+    res.status(500).json({ success: false, message: 'Server error' });
   }
 });
 

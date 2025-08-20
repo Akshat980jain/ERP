@@ -8,7 +8,8 @@ class ApiClient {
   }
 
   private getAuthHeaders(token?: string): HeadersInit {
-    const authToken = token || localStorage.getItem('educonnect_token');
+    // If an explicit empty string is provided, skip attaching Authorization
+    const authToken = token === '' ? undefined : (token || localStorage.getItem('educonnect_token'));
     console.log('Getting auth headers, token:', authToken ? authToken.substring(0, 20) + '...' : 'No token');
     return {
       'Content-Type': 'application/json',
@@ -105,14 +106,51 @@ class ApiClient {
 
       console.log('Sending login request with:', { email: trimmedEmail, password: '***' });
 
+      // Explicitly pass an empty token to avoid sending any Authorization header
+      // which can interfere with public login endpoints if a stale token exists
       return this.request('/auth/login', {
         method: 'POST',
         body: JSON.stringify(requestBody)
-      });
+      }, '');
     } catch (error) {
       console.error('Login method error:', error);
       throw error;
     }
+  }
+
+  async verifyLogin2FA(tempToken: string, code: string) {
+    // Do not attach Authorization when verifying 2FA with the temporary token
+    return this.request('/auth/2fa/verify-login', {
+      method: 'POST',
+      body: JSON.stringify({ tempToken, code })
+    }, '');
+  }
+
+  async initiate2FASetup(payload?: { method?: 'totp' | 'sms'; phone?: string }) {
+    return this.request('/auth/2fa/setup', {
+      method: 'POST',
+      body: JSON.stringify(payload || { method: 'totp' })
+    });
+  }
+
+  async verify2FASetup(code: string, method: 'totp' | 'sms' = 'totp') {
+    return this.request('/auth/2fa/verify-setup', {
+      method: 'POST',
+      body: JSON.stringify({ code, method })
+    });
+  }
+
+  async disable2FA(code: string) {
+    return this.request('/auth/2fa/disable', {
+      method: 'POST',
+      body: JSON.stringify({ code })
+    });
+  }
+
+  async resend2FACode() {
+    return this.request('/auth/2fa/resend', {
+      method: 'POST'
+    });
   }
 
   async getCurrentUser(token?: string) {

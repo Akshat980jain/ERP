@@ -4,11 +4,14 @@ import apiClient from '../utils/api';
 
 interface AuthContextType {
   user: User | null;
-  login: (email: string, password: string) => Promise<{ success: boolean; message?: string }>;
+  login: (email: string, password: string) => Promise<{ success: boolean; message?: string; twoFactorRequired?: boolean; tempToken?: string; method?: 'totp' | 'sms'; maskedPhone?: string; devCode?: string }>;
+  verifyTwoFactor: (tempToken: string, code: string) => Promise<{ success: boolean; message?: string }>;
   logout: () => void;
   updateUser: (userData: User) => void;
   isLoading: boolean;
   token: string | null;
+  theme: 'light' | 'dark';
+  toggleTheme: () => void;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -17,6 +20,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [token, setToken] = useState<string | null>(null);
+  const [theme, setTheme] = useState<'light' | 'dark'>(() => (localStorage.getItem('theme') as 'light' | 'dark') || 'light');
 
   useEffect(() => {
     // Check for existing token and user
@@ -33,6 +37,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
+  useEffect(() => {
+    const root = window.document.documentElement;
+    if (theme === 'dark') {
+      root.classList.add('dark');
+    } else {
+      root.classList.remove('dark');
+    }
+    localStorage.setItem('theme', theme);
+  }, [theme]);
+
   const verifyToken = async (token: string) => {
     try {
       const data = await apiClient.getCurrentUser(token) as { user: User };
@@ -46,20 +60,25 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  const login = async (email: string, password: string): Promise<{ success: boolean; message?: string }> => {
+  const login = async (email: string, password: string): Promise<{ success: boolean; message?: string; twoFactorRequired?: boolean; tempToken?: string; method?: 'totp' | 'sms'; maskedPhone?: string; devCode?: string }> => {
     setIsLoading(true);
     
     try {
       console.log('Attempting login with email:', email);
       
-      const data = await apiClient.login(email, password) as { user: User; token: string };
-      
+      const data = await apiClient.login(email, password) as any;
+
+      if (data?.twoFactorRequired && data?.tempToken) {
+        console.log('Two-factor required, temp token received');
+        return { success: false, twoFactorRequired: true, tempToken: data.tempToken, method: data.method, maskedPhone: data.maskedPhone, devCode: data.devCode };
+      }
+
       console.log('Login successful:', data);
       
-      setUser(data.user);
-      setToken(data.token);
-      localStorage.setItem('educonnect_user', JSON.stringify(data.user));
-      localStorage.setItem('educonnect_token', data.token);
+      setUser((data as { user: User }).user);
+      setToken((data as { token: string }).token);
+      localStorage.setItem('educonnect_user', JSON.stringify((data as { user: User }).user));
+      localStorage.setItem('educonnect_token', (data as { token: string }).token);
       
       return { success: true };
     } catch (error) {
@@ -80,11 +99,35 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
+  const verifyTwoFactor = async (tempToken: string, code: string): Promise<{ success: boolean; message?: string }> => {
+    setIsLoading(true);
+    try {
+      const data = await apiClient.verifyLogin2FA(tempToken, code) as { user: User; token: string };
+
+      setUser(data.user);
+      setToken(data.token);
+      localStorage.setItem('educonnect_user', JSON.stringify(data.user));
+      localStorage.setItem('educonnect_token', data.token);
+
+      return { success: true };
+    } catch (error) {
+      let errorMessage = 'Invalid or expired code';
+      if (error instanceof Error) errorMessage = error.message;
+      return { success: false, message: errorMessage };
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   const logout = () => {
     setUser(null);
     setToken(null);
     localStorage.removeItem('educonnect_user');
     localStorage.removeItem('educonnect_token');
+  };
+
+  const toggleTheme = () => {
+    setTheme((prev) => (prev === 'dark' ? 'light' : 'dark'));
   };
 
   const updateUser = (userData: User) => {
@@ -93,7 +136,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   return (
-    <AuthContext.Provider value={{ user, login, logout, updateUser, isLoading, token }}>
+    <AuthContext.Provider value={{ user, login, verifyTwoFactor, logout, updateUser, isLoading, token, theme, toggleTheme }}>
       {children}
     </AuthContext.Provider>
   );
