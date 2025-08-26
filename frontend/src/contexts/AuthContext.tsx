@@ -6,6 +6,7 @@ interface AuthContextType {
   user: User | null;
   login: (email: string, password: string) => Promise<{ success: boolean; message?: string; twoFactorRequired?: boolean; tempToken?: string; method?: 'totp' | 'sms'; maskedPhone?: string; devCode?: string }>;
   verifyTwoFactor: (tempToken: string, code: string) => Promise<{ success: boolean; message?: string }>;
+  verifyEmailOtp: (email: string, otp: string) => Promise<{ success: boolean; message?: string }>;
   logout: () => void;
   updateUser: (userData: User) => void;
   isLoading: boolean;
@@ -21,6 +22,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [isLoading, setIsLoading] = useState(true);
   const [token, setToken] = useState<string | null>(null);
   const [theme, setTheme] = useState<'light' | 'dark'>(() => (localStorage.getItem('theme') as 'light' | 'dark') || 'light');
+  const [pendingEmail, setPendingEmail] = useState<string | null>(null);
 
   useEffect(() => {
     // Check for existing token and user
@@ -60,7 +62,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  const login = async (email: string, password: string): Promise<{ success: boolean; message?: string; twoFactorRequired?: boolean; tempToken?: string; method?: 'totp' | 'sms'; maskedPhone?: string; devCode?: string }> => {
+  const login = async (email: string, password: string): Promise<{ success: boolean; message?: string; twoFactorRequired?: boolean; tempToken?: string; method?: 'totp' | 'sms' | 'email'; maskedPhone?: string; devCode?: string }> => {
     setIsLoading(true);
     
     try {
@@ -68,9 +70,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       
       const data = await apiClient.login(email, password) as any;
 
+      // New email OTP flow (preferred)
+      if (data?.otpRequired && data?.tempToken) {
+        console.log('OTP required, temp token received');
+        setPendingEmail(email);
+        return { success: false, twoFactorRequired: true, tempToken: data.tempToken, method: 'email' };
+      }
+
+      // Backward compatibility: server might still send twoFactorRequired
       if (data?.twoFactorRequired && data?.tempToken) {
-        console.log('Two-factor required, temp token received');
-        return { success: false, twoFactorRequired: true, tempToken: data.tempToken, method: data.method, maskedPhone: data.maskedPhone, devCode: data.devCode };
+        console.log('Server responded with legacy twoFactorRequired');
+        // If we force email OTP server-side, treat this as email OTP step
+        setPendingEmail(email);
+        return { success: false, twoFactorRequired: true, tempToken: data.tempToken, method: 'email', maskedPhone: data.maskedPhone, devCode: data.devCode };
       }
 
       console.log('Login successful:', data);
@@ -102,13 +114,40 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const verifyTwoFactor = async (tempToken: string, code: string): Promise<{ success: boolean; message?: string }> => {
     setIsLoading(true);
     try {
-      const data = await apiClient.verifyLogin2FA(tempToken, code) as { user: User; token: string };
+      // Prefer email OTP verification if we have a pending email
+      let data: { user: User; token: string };
+      if (pendingEmail) {
+        const res = await apiClient.verifyOtp(pendingEmail, code) as any;
+        data = { user: res.user, token: res.token };
+        setPendingEmail(null);
+      } else {
+        data = await apiClient.verifyLogin2FA(tempToken, code) as { user: User; token: string };
+      }
 
       setUser(data.user);
       setToken(data.token);
       localStorage.setItem('educonnect_user', JSON.stringify(data.user));
       localStorage.setItem('educonnect_token', data.token);
 
+      return { success: true };
+    } catch (error) {
+      let errorMessage = 'Invalid or expired code';
+      if (error instanceof Error) errorMessage = error.message;
+      return { success: false, message: errorMessage };
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const verifyEmailOtp = async (email: string, otp: string): Promise<{ success: boolean; message?: string }> => {
+    setIsLoading(true);
+    try {
+      const res = await apiClient.verifyOtp(email, otp) as any;
+      const data = { user: res.user as User, token: res.token as string };
+      setUser(data.user);
+      setToken(data.token);
+      localStorage.setItem('educonnect_user', JSON.stringify(data.user));
+      localStorage.setItem('educonnect_token', data.token);
       return { success: true };
     } catch (error) {
       let errorMessage = 'Invalid or expired code';
@@ -136,7 +175,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   return (
-    <AuthContext.Provider value={{ user, login, verifyTwoFactor, logout, updateUser, isLoading, token, theme, toggleTheme }}>
+    <AuthContext.Provider value={{ user, login, verifyTwoFactor, verifyEmailOtp, logout, updateUser, isLoading, token, theme, toggleTheme }}>
       {children}
     </AuthContext.Provider>
   );

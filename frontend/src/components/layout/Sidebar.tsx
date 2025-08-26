@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { 
   Book, 
   Calendar, 
@@ -18,21 +19,25 @@ import {
   ChevronRight,
   Moon,
   Sun,
-  Maximize2,
-  Minimize2,
   LogOut,
-  HelpCircle,
   MessageCircle,
   Shield,
   Wifi,
   WifiOff,
-  Menu,
   ChevronLeft,
   Bus,
-  Building2
+  Building2,
+  Palette
 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
+import { useBackground } from '../../contexts/BackgroundContext';
 import { clsx } from 'clsx';
+import { 
+  sidebarItemVariants, 
+  staggerContainer, 
+  staggerItem,
+  buttonVariants
+} from '../../utils/animations';
 
 interface SidebarProps {
   activeTab: string;
@@ -71,12 +76,51 @@ export function Sidebar({
   onThemeChange 
 }: SidebarProps) {
   const { user, logout, theme: ctxTheme, toggleTheme } = useAuth();
+  const { variant, intensity, colorScheme } = useBackground();
   const effectiveTheme = (theme as 'light' | 'dark') || ctxTheme;
+  
+  // Dynamic background color based on current theme and background context
+  const getSidebarBackground = () => {
+    const colorSchemes = {
+      blue: 'from-blue-500/20 via-blue-400/15 to-blue-600/20',
+      purple: 'from-purple-500/20 via-purple-400/15 to-purple-600/20',
+      green: 'from-green-500/20 via-green-400/15 to-green-600/20',
+      sunset: 'from-orange-500/20 via-yellow-400/15 to-red-500/20',
+      ocean: 'from-cyan-500/20 via-blue-400/15 to-teal-500/20',
+      forest: 'from-green-500/20 via-emerald-400/15 to-green-600/20',
+      dynamic: 'from-blue-500/20 via-purple-400/15 to-green-500/20',
+      vibrant: 'from-pink-500/20 via-purple-400/15 to-cyan-500/20',
+      neon: 'from-green-400/20 via-cyan-400/15 to-pink-500/20',
+      pastel: 'from-pink-300/20 via-blue-300/15 to-green-300/20',
+      warm: 'from-orange-500/20 via-red-400/15 to-yellow-500/20',
+      cool: 'from-cyan-500/20 via-blue-400/15 to-teal-500/20'
+    };
+    
+    const gradientColors = colorSchemes[colorScheme] || colorSchemes.dynamic;
+    
+    if (effectiveTheme === 'dark') {
+      return `bg-gradient-to-br ${gradientColors} bg-gray-900/95 bg-glass-dark`;
+    } else {
+      return `bg-gradient-to-br ${gradientColors} bg-white/95 bg-glass backdrop-blur-md`;
+    }
+  };
+  
+  const sidebarBgColor = getSidebarBackground();
+  
+  // Dynamic sidebar effects based on background context
+  const sidebarEffects = {
+    subtle: 'opacity-90 shadow-glow',
+    medium: 'opacity-95 shadow-glow-purple',
+    intense: 'opacity-100 shadow-glow-green'
+  };
+  
+  const sidebarVariant = variant === 'floating-orbs' ? 'shadow-glow' : 
+                         variant === 'gradient-mesh' ? 'shadow-glow-purple' : 
+                         'shadow-glow-green';
   
   // Enhanced state management
   const [expandedCategories, setExpandedCategories] = useState<string[]>(['main']);
   const [isOnline, setIsOnline] = useState(navigator.onLine);
-  const [showQuickActions, setShowQuickActions] = useState(false);
   const [accessStats, setAccessStats] = useState<Record<string, { count: number }>>({});
   const [hoveredItem, setHoveredItem] = useState<string | null>(null);
   const [animateItems, setAnimateItems] = useState(false);
@@ -106,7 +150,7 @@ export function Sidebar({
   }, []);
 
   // Enhanced menu items with modern design
-  const getMenuItems = (): MenuItem[] => {
+  const getMenuItems = React.useCallback((): MenuItem[] => {
     const commonItems: MenuItem[] = [
       { 
         id: 'dashboard', 
@@ -125,6 +169,16 @@ export function Sidebar({
         category: 'main',
         description: 'Stay updated with alerts',
         color: 'orange'
+      },
+      { 
+        id: 'background-showcase', 
+        label: 'Background Showcase', 
+        icon: Palette,
+        category: 'main',
+        description: 'Explore beautiful backgrounds',
+        color: 'purple',
+        gradient: true,
+        priority: 'medium'
       },
     ];
 
@@ -391,7 +445,7 @@ export function Sidebar({
     };
 
     return [...commonItems, ...getRoleSpecificItems(), profileItem];
-  };
+  }, [user]);
 
   const menuItems = useMemo(() => {
     const items = getMenuItems();
@@ -399,7 +453,7 @@ export function Sidebar({
       ...item,
       accessCount: accessStats[item.id]?.count || 0
     }));
-  }, [accessStats]);
+  }, [accessStats, getMenuItems]);
 
   // Enhanced filtering - now just returns all menu items
   const filteredMenuItems = useMemo(() => {
@@ -456,30 +510,30 @@ export function Sidebar({
   // Get color classes for items
   const getColorClasses = (item: MenuItem, isActive: boolean) => {
     const colorMap = {
-      blue: isActive ? 'bg-blue-500 text-white' : 'text-blue-600 hover:bg-blue-50',
-      purple: isActive ? 'bg-purple-500 text-white' : 'text-purple-600 hover:bg-purple-50',
-      green: isActive ? 'bg-green-500 text-white' : 'text-green-600 hover:bg-green-50',
-      yellow: isActive ? 'bg-yellow-500 text-white' : 'text-yellow-600 hover:bg-yellow-50',
-      red: isActive ? 'bg-red-500 text-white' : 'text-red-600 hover:bg-red-50',
-      indigo: isActive ? 'bg-indigo-500 text-white' : 'text-indigo-600 hover:bg-indigo-50',
-      teal: isActive ? 'bg-teal-500 text-white' : 'text-teal-600 hover:bg-teal-50',
-      orange: isActive ? 'bg-orange-500 text-white' : 'text-orange-600 hover:bg-orange-50',
-      cyan: isActive ? 'bg-cyan-500 text-white' : 'text-cyan-600 hover:bg-cyan-50',
-      emerald: isActive ? 'bg-emerald-500 text-white' : 'text-emerald-600 hover:bg-emerald-50',
-      gray: isActive ? 'bg-gray-500 text-white' : 'text-gray-600 hover:bg-gray-50'
+      blue: isActive ? 'bg-blue-500 text-white shadow-lg shadow-blue-500/25' : 'text-blue-600 hover:bg-blue-50 hover:shadow-md',
+      purple: isActive ? 'bg-purple-500 text-white shadow-lg shadow-purple-500/25' : 'text-purple-600 hover:bg-purple-50 hover:shadow-md',
+      green: isActive ? 'bg-green-500 text-white shadow-lg shadow-green-500/25' : 'text-green-600 hover:bg-green-50 hover:shadow-md',
+      yellow: isActive ? 'bg-yellow-500 text-white shadow-lg shadow-yellow-500/25' : 'text-yellow-600 hover:bg-yellow-50 hover:shadow-md',
+      red: isActive ? 'bg-red-500 text-white shadow-lg shadow-red-500/25' : 'text-red-600 hover:bg-red-50 hover:shadow-md',
+      indigo: isActive ? 'bg-indigo-500 text-white shadow-lg shadow-indigo-500/25' : 'text-indigo-600 hover:bg-indigo-50 hover:shadow-md',
+      teal: isActive ? 'bg-teal-500 text-white shadow-lg shadow-teal-500/25' : 'text-teal-600 hover:bg-teal-50 hover:shadow-md',
+      orange: isActive ? 'bg-orange-500 text-white shadow-lg shadow-orange-500/25' : 'text-orange-600 hover:bg-orange-50 hover:shadow-md',
+      cyan: isActive ? 'bg-cyan-500 text-white shadow-lg shadow-cyan-500/25' : 'text-cyan-600 hover:bg-cyan-50 hover:shadow-md',
+      emerald: isActive ? 'bg-emerald-500 text-white shadow-lg shadow-emerald-500/25' : 'text-emerald-600 hover:bg-emerald-50 hover:shadow-md',
+      gray: isActive ? 'bg-gray-500 text-white shadow-lg shadow-gray-500/25' : 'text-gray-600 hover:bg-gray-50 hover:shadow-md'
     };
 
     if (item.gradient && isActive) {
       const gradientMap = {
-        blue: 'bg-gradient-to-r from-blue-500 to-blue-600',
-        purple: 'bg-gradient-to-r from-purple-500 to-purple-600',
-        green: 'bg-gradient-to-r from-green-500 to-green-600',
-        emerald: 'bg-gradient-to-r from-emerald-500 to-emerald-600'
+        blue: 'bg-gradient-to-r from-blue-500 to-blue-600 text-white shadow-lg shadow-blue-500/25',
+        purple: 'bg-gradient-to-r from-purple-500 to-purple-600 text-white shadow-lg shadow-purple-500/25',
+        green: 'bg-gradient-to-r from-green-500 to-green-600 text-white shadow-lg shadow-green-500/25',
+        emerald: 'bg-gradient-to-r from-emerald-500 to-emerald-600 text-white shadow-lg shadow-emerald-500/25'
       };
-      return `${gradientMap[item.color as keyof typeof gradientMap]} text-white`;
+      return gradientMap[item.color as keyof typeof gradientMap] || gradientMap.blue;
     }
 
-    return colorMap[item.color as keyof typeof colorMap] || (isActive ? 'bg-gray-500 text-white' : 'text-gray-600 hover:bg-gray-50');
+    return colorMap[item.color as keyof typeof colorMap] || (isActive ? 'bg-gray-500 text-white shadow-lg shadow-gray-500/25' : 'text-gray-600 hover:bg-gray-50 hover:shadow-md');
   };
 
   // Get badge classes
@@ -503,13 +557,19 @@ export function Sidebar({
     const isHovered = hoveredItem === item.id;
 
     return (
-      <div key={item.id} className="relative">
+      <motion.div 
+        key={item.id} 
+        className="relative"
+        variants={sidebarItemVariants}
+        whileHover="hover"
+        layout
+      >
         <div
           className="relative group"
           onMouseEnter={() => setHoveredItem(item.id)}
           onMouseLeave={() => setHoveredItem(null)}
         >
-          <button
+          <motion.button
             onClick={() => hasChildren ? toggleCategory(item.id) : handleTabChange(item.id)}
             onContextMenu={(e) => {
               e.preventDefault();
@@ -530,6 +590,12 @@ export function Sidebar({
               }
             )}
             title={collapsed ? item.label : undefined}
+            variants={buttonVariants}
+            whileHover="hover"
+            whileTap="tap"
+            animate={animateItems && isActive ? { scale: [1, 1.05, 1] } : {}}
+            transition={{ duration: 0.3 }}
+            layout
           >
             {/* Active indicator */}
             {isActive && !collapsed && (
@@ -542,14 +608,15 @@ export function Sidebar({
                 <div className={clsx(
                   'p-2 rounded-lg transition-all duration-200',
                   {
-                    'bg-white bg-opacity-20': isActive,
-                    'bg-gray-100': !isActive,
-                    'scale-110': isHovered
+                    'bg-white bg-opacity-20 shadow-lg': isActive,
+                    'bg-gray-100/80 dark:bg-gray-800/80 hover:bg-gray-200/80 dark:hover:bg-gray-700/80': !isActive,
+                    'scale-110 shadow-xl': isHovered,
+                    'animate-pulse': animateItems && isActive
                   }
                 )}>
                   <Icon className={clsx('w-5 h-5', {
                     'text-white': isActive,
-                    [`text-${item.color}-600`]: !isActive && item.color
+                    [`text-${item.color}-600 dark:text-${item.color}-400`]: !isActive && item.color
                   })} />
                 </div>
                 
@@ -577,14 +644,15 @@ export function Sidebar({
                   <div className={clsx(
                     'p-2 rounded-lg transition-all duration-200',
                     {
-                      'bg-white bg-opacity-20': isActive,
-                      'bg-gray-100': !isActive,
-                      'scale-110': isHovered
+                      'bg-white bg-opacity-20 shadow-lg': isActive,
+                      'bg-gray-100/80 dark:bg-gray-800/80 hover:bg-gray-200/80 dark:hover:bg-gray-700/80': !isActive,
+                      'scale-110 shadow-xl': isHovered,
+                      'animate-pulse': animateItems && isActive
                     }
                   )}>
                     <Icon className={clsx('w-5 h-5', {
                       'text-white': isActive,
-                      [`text-${item.color}-600`]: !isActive && item.color
+                      [`text-${item.color}-600 dark:text-${item.color}-400`]: !isActive && item.color
                     })} />
                   </div>
                   
@@ -640,42 +708,64 @@ export function Sidebar({
                 </div>
               </div>
             )}
-          </button>
+          </motion.button>
 
           {/* Tooltip for collapsed state */}
           {collapsed && isHovered && (
-            <div className="fixed left-20 bg-gray-900 text-white px-3 py-2 rounded-lg text-sm z-50 pointer-events-none whitespace-nowrap">
+            <motion.div 
+              className="fixed left-20 bg-gray-900 text-white px-3 py-2 rounded-lg text-sm z-50 pointer-events-none whitespace-nowrap"
+              initial={{ opacity: 0, x: -10 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: -10 }}
+              transition={{ duration: 0.2 }}
+            >
               {item.label}
               {item.badge && (
                 <span className="ml-2 px-2 py-0.5 bg-blue-500 rounded-full text-xs">
                   {item.badge}
                 </span>
               )}
-            </div>
+            </motion.div>
           )}
         </div>
 
         {/* Children */}
-        {hasChildren && isExpanded && !collapsed && (
-          <div className="ml-6 mt-2 space-y-1 border-l-2 border-gray-200 dark:border-gray-800 pl-4">
-            {item.children!.map(child => renderMenuItem(child, level + 1))}
-          </div>
-        )}
+        <AnimatePresence>
+          {hasChildren && isExpanded && !collapsed && (
+            <motion.div 
+              className="ml-6 mt-2 space-y-1 border-l-2 border-gray-200 dark:border-gray-800 pl-4"
+              initial={{ opacity: 0, height: 0 }}
+              animate={{ opacity: 1, height: 'auto' }}
+              exit={{ opacity: 0, height: 0 }}
+              transition={{ duration: 0.3, ease: 'easeInOut' }}
+            >
+              {item.children!.map(child => renderMenuItem(child, level + 1))}
+            </motion.div>
+          )}
+        </AnimatePresence>
 
         {/* Context menu */}
-        {showContextMenu === item.id && (
-          <div className="absolute right-0 top-full mt-1 w-48 bg-white rounded-lg shadow-xl border z-50">
-            <div className="py-1">
-              <button className="w-full px-4 py-2 text-sm text-left hover:bg-gray-50 flex items-center space-x-2">
-                <span>Add to bookmarks</span>
-              </button>
-              <button className="w-full px-4 py-2 text-sm text-left hover:bg-gray-50 flex items-center space-x-2">
-                <span>Hide from sidebar</span>
-              </button>
-            </div>
-          </div>
-        )}
-      </div>
+        <AnimatePresence>
+          {showContextMenu === item.id && (
+            <motion.div 
+              className="absolute right-0 top-full mt-1 w-48 bg-white rounded-lg shadow-xl border z-50"
+              initial={{ opacity: 0, y: -10, scale: 0.95 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: -10, scale: 0.95 }}
+              transition={{ duration: 0.2, ease: 'easeOut' }}
+            >
+              <div className="py-1">
+                <button className="w-full px-4 py-2 text-sm text-left hover:bg-gray-50 flex items-center space-x-2">
+                  <span>Add to bookmarks</span>
+                </button>
+                <button className="w-full px-4 py-2 text-sm text-left hover:bg-gray-50 flex items-center space-x-2">
+                  <span>Hide from sidebar</span>
+                </button>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </motion.div>
     );
   };
 
@@ -725,18 +815,34 @@ export function Sidebar({
   return (
     <>
       {/* Responsive sidebar container */}
-      <div className={clsx(
-        'h-full bg-white dark:bg-gray-900 border-r border-gray-200 dark:border-gray-800 flex flex-col transition-all duration-300 shadow-xl relative',
-        'backdrop-blur-sm bg-white/95 dark:bg-gray-900/95',
-        'md:static md:translate-x-0 fixed top-0 left-0 z-40',
-        {
-          'w-80': !collapsed,
-          'w-20': collapsed,
-        }
-      )}>
+      <motion.div 
+        className={clsx(
+          'h-full border-r border-gray-200 dark:border-gray-800 flex flex-col shadow-xl relative',
+          'backdrop-blur-sm',
+          'md:static md:translate-x-0 fixed top-0 left-0 z-40',
+          sidebarBgColor,
+          sidebarEffects[intensity],
+          sidebarVariant
+        )}
+        style={{ width: collapsed ? 80 : 320 }}
+        initial={false}
+        animate={{ width: collapsed ? 80 : 320 }}
+        transition={{ duration: 0.35, ease: 'easeInOut' }}
+        layout
+      >
         {/* Enhanced Header - Fixed height */}
-        <div className="flex-shrink-0 p-6 border-b border-gray-200 dark:border-gray-800 bg-gradient-to-r from-blue-600 to-purple-600 text-white relative">
-          <div className="flex items-center justify-between">
+        <div className={`flex-shrink-0 p-6 border-b border-gray-200/50 dark:border-gray-700/50 relative overflow-hidden ${getSidebarBackground()}`}>
+          {/* Dynamic gradient overlay */}
+          <div className="absolute inset-0 bg-gradient-to-r from-blue-600/80 via-purple-600/80 to-blue-600/80 dark:from-blue-700/90 dark:via-purple-700/90 dark:to-blue-700/90" />
+          
+          {/* Animated background elements */}
+          <div className="absolute inset-0 opacity-30">
+            <div className="absolute top-0 left-0 w-32 h-32 bg-white/10 rounded-full blur-xl animate-pulse" />
+            <div className="absolute bottom-0 right-0 w-24 h-24 bg-white/10 rounded-full blur-lg animate-pulse" style={{ animationDelay: '1s' }} />
+            <div className="absolute top-1/2 left-1/2 w-16 h-16 bg-white/10 rounded-full blur-md animate-pulse" style={{ animationDelay: '2s' }} />
+          </div>
+          
+          <div className="flex items-center justify-between relative z-10">
             <div className="flex items-center space-x-3">
               <div className="w-12 h-12 bg-white bg-opacity-20 rounded-xl flex items-center justify-center backdrop-blur">
                 <GraduationCap className="w-7 h-7 text-white" />
@@ -802,46 +908,94 @@ export function Sidebar({
         )}
 
         {/* Enhanced Navigation - Flexible height with proper scrolling */}
-        <nav className="flex-1 p-4 space-y-3 overflow-y-auto custom-scrollbar min-h-0 text-gray-800 dark:text-gray-100">
+        <motion.nav 
+          className="flex-1 p-4 space-y-3 overflow-y-auto custom-scrollbar min-h-0 text-gray-800 dark:text-gray-100 relative"
+          variants={staggerContainer}
+          initial="initial"
+          animate="animate"
+          layout
+        >
+          {/* Subtle background pattern */}
+          <div className="absolute inset-0 opacity-5 pointer-events-none">
+            <div className="absolute top-0 left-0 w-full h-full bg-gradient-to-br from-current via-transparent to-current" />
+          </div>
+          
           {/* Grouped Menu Items */}
-          {Object.entries(groupedMenuItems).map(([category, items]) => {
-            const isExpanded = expandedCategories.includes(category);
-            
-            return (
-              <div key={category} className="space-y-2">
-                {!collapsed && items.length > 0 && (
-                  <button
-                    onClick={() => toggleCategory(category)}
-                    className="w-full flex items-center justify-between px-2 py-2 text-sm font-semibold text-gray-700 hover:text-gray-900 transition-colors"
-                  >
-                    <div className="flex items-center space-x-2">
-                      <span>{getCategoryDisplayName(category)}</span>
-                    </div>
-                    <div className={clsx('transition-transform duration-200', {
-                      'rotate-90': isExpanded
-                    })}>
-                      <ChevronRight className="w-4 h-4" />
-                    </div>
-                  </button>
-                )}
-                
-                {(collapsed || isExpanded) && (
-                  <div className={clsx('space-y-2', {
-                    'space-y-3': collapsed // More spacing when collapsed
-                  })}>
-                    {items.map(item => renderMenuItem(item))}
-                  </div>
-                )}
-              </div>
-            );
-          })}
-        </nav>
+          <div className="relative z-10">
+            {Object.entries(groupedMenuItems).map(([category, items], categoryIndex) => {
+              const isExpanded = expandedCategories.includes(category);
+              
+              return (
+                <motion.div 
+                  key={category} 
+                  className="space-y-2"
+                  variants={staggerItem}
+                  custom={categoryIndex}
+                  layout
+                >
+                  {!collapsed && items.length > 0 && (
+                    <motion.button
+                      onClick={() => toggleCategory(category)}
+                      className="w-full flex items-center justify-between px-3 py-2 text-sm font-semibold text-gray-700 dark:text-gray-300 hover:text-gray-900 dark:hover:text-gray-100 transition-all duration-200 rounded-lg hover:bg-gray-100/50 dark:hover:bg-gray-800/50"
+                      variants={buttonVariants}
+                      whileHover="hover"
+                      whileTap="tap"
+                    >
+                      <div className="flex items-center space-x-2">
+                        <span className="bg-gradient-to-r from-gray-600 to-gray-800 dark:from-gray-300 dark:to-gray-100 bg-clip-text text-transparent">
+                          {getCategoryDisplayName(category)}
+                        </span>
+                      </div>
+                      <motion.div 
+                        className="transition-transform duration-200 text-gray-500 dark:text-gray-400"
+                        animate={{ rotate: isExpanded ? 90 : 0 }}
+                        transition={{ duration: 0.2 }}
+                      >
+                        <ChevronRight className="w-4 h-4" />
+                      </motion.div>
+                    </motion.button>
+                  )}
+                  
+                  <AnimatePresence>
+                    {(collapsed || isExpanded) && (
+                      <motion.div 
+                        className={clsx('space-y-2', {
+                          'space-y-3': collapsed // More spacing when collapsed
+                        })}
+                        initial={{ opacity: 0, height: 0 }}
+                        animate={{ opacity: 1, height: 'auto' }}
+                        exit={{ opacity: 0, height: 0 }}
+                        transition={{ duration: 0.3, ease: 'easeInOut' }}
+                        layout
+                      >
+                        {items.map((item, itemIndex) => (
+                          <motion.div
+                            key={item.id}
+                            variants={staggerItem}
+                            custom={itemIndex}
+                            initial="initial"
+                            animate="animate"
+                            layout
+                          >
+                            {renderMenuItem(item)}
+                          </motion.div>
+                        ))}
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                </motion.div>
+              );
+            })}
+          </div>
+        </motion.nav>
 
         {/* Enhanced Footer - Fixed height */}
-        <div className="flex-shrink-0 border-t border-gray-200 bg-gray-50">
+        <div className={`flex-shrink-0 border-t border-gray-200/50 dark:border-gray-700/50 relative overflow-hidden ${getSidebarBackground()}`}>
+          {/* Subtle gradient overlay */}
+          <div className="absolute inset-0 bg-gradient-to-t from-gray-50/50 via-transparent to-transparent dark:from-gray-800/50" />
+          
           {/* User Profile */}
-          <div className={clsx('p-4', {'px-2': collapsed
-          })}>
+          <div className={clsx('p-4 relative z-10', {'px-2': collapsed})}>
             <div className={clsx('flex items-center space-x-3', {
               'justify-center': collapsed
             })}>
@@ -937,7 +1091,7 @@ export function Sidebar({
 
         {/* Resize handle for desktop */}
         <div className="absolute top-0 right-0 w-1 h-full hover:bg-blue-200 cursor-col-resize transition-colors hidden md:block" />
-      </div>
+      </motion.div>
 
       {/* Mobile overlay */}
       {!collapsed && (

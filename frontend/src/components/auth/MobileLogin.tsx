@@ -12,9 +12,10 @@ const MobileLogin: React.FC = () => {
   const [twoFactorRequired, setTwoFactorRequired] = useState(false);
   const [tempToken, setTempToken] = useState<string | null>(null);
   const [twoFactorCode, setTwoFactorCode] = useState('');
-  const [twoFactorMethod, setTwoFactorMethod] = useState<'totp' | 'sms'>('totp');
+  const [twoFactorMethod, setTwoFactorMethod] = useState<'totp' | 'sms' | 'email'>('email');
   const [maskedPhone, setMaskedPhone] = useState<string | undefined>(undefined);
   const [devCode, setDevCode] = useState<string | undefined>(undefined);
+  const [pendingEmail, setPendingEmail] = useState<string>('');
 
   const isDesktop = useMemo(() => window.matchMedia('(min-width: 768px)').matches, []);
 
@@ -27,12 +28,12 @@ const MobileLogin: React.FC = () => {
   const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
-    if (twoFactorRequired && tempToken) {
+    if (twoFactorRequired) {
       if (!twoFactorCode || twoFactorCode.trim().length < 6) {
         setError('Enter the 6-digit authentication code');
         return;
       }
-      const verify = await verifyTwoFactor(tempToken, twoFactorCode.trim());
+      const verify = await verifyTwoFactor(tempToken || '', twoFactorCode.trim());
       if (!verify.success) {
         setError(verify.message || 'Invalid code');
       } else {
@@ -44,12 +45,13 @@ const MobileLogin: React.FC = () => {
     }
 
     const res = await login(email, password);
-    if (res.twoFactorRequired && res.tempToken) {
+    if (res.twoFactorRequired) {
       setTwoFactorRequired(true);
-      setTempToken(res.tempToken);
-      setTwoFactorMethod(res.method || 'totp');
+      setTempToken(res.tempToken || null);
+      setTwoFactorMethod(res.method || 'email');
       setMaskedPhone(res.maskedPhone);
       setDevCode(res.devCode);
+      setPendingEmail(email);
       return;
     }
     if (!res.success) {
@@ -124,6 +126,24 @@ const MobileLogin: React.FC = () => {
                 className="form-input w-full rounded-lg text-white focus:outline-0 focus:ring-0 border-none bg-[#283039] h-14 placeholder:text-[#9cabba] p-4 text-base"
                 placeholder="6-digit code"
               />
+              <div className="flex items-center justify-between mt-2">
+                <span className="text-xs text-[#9cabba]">Sent to: <strong>{pendingEmail}</strong></span>
+                <button
+                  type="button"
+                  onClick={async () => {
+                    try {
+                      const api = (await import('../../utils/api')).default;
+                      await api.request('/auth/request-otp', { method: 'POST', body: JSON.stringify({ email: pendingEmail, purpose: 'login' }) }, '');
+                      setError('OTP resent to your email');
+                    } catch (e) {
+                      setError('Failed to resend OTP');
+                    }
+                  }}
+                  className="text-xs text-blue-400"
+                >
+                  Resend OTP
+                </button>
+              </div>
               {devCode && (
                 <div className="mt-2 text-xs text-yellow-300">Dev code: {devCode}</div>
               )}

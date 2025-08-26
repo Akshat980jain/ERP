@@ -35,6 +35,66 @@ body {
     transition-duration: 200ms;
     transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
   }
+
+  /* Respect reduced motion */
+  @media (prefers-reduced-motion: reduce) {
+    * {
+      animation: none !important;
+      transition: none !important;
+      scroll-behavior: auto !important;
+    }
+  }
+
+  /* Hover glow utility */
+  .hover-glow {
+    position: relative;
+  }
+  .hover-glow::after {
+    content: '';
+    position: absolute;
+    inset: -2px;
+    border-radius: inherit;
+    background: radial-gradient(120px 60px at var(--mx, 50%) var(--my, 50%), rgba(59,130,246,0.25), transparent 60%);
+    opacity: 0;
+    transition: opacity .3s ease;
+    pointer-events: none;
+  }
+  .hover-glow:hover::after { opacity: 1; }
+
+  /* Animated gradient background helper */
+  .animated-gradient {
+    background: linear-gradient(120deg, #3b82f6, #8b5cf6, #06b6d4);
+    background-size: 200% 200%;
+    animation: gradientShift 12s ease infinite;
+  }
+
+  @keyframes gradientShift {
+    0% { background-position: 0% 50%; }
+    50% { background-position: 100% 50%; }
+    100% { background-position: 0% 50%; }
+  }
+
+  /* Ripple effect */
+  .ripple-container {
+    position: relative;
+    overflow: hidden;
+  }
+
+  .ripple {
+    position: absolute;
+    border-radius: 9999px;
+    transform: scale(0);
+    animation: ripple 700ms linear;
+    pointer-events: none;
+    background-color: rgba(255, 255, 255, 0.5);
+  }
+
+  @keyframes ripple {
+    to {
+      transform: scale(4);
+      opacity: 0;
+    }
+  }
   
   /* Custom scrollbar for dark mode */
   .dark ::-webkit-scrollbar {

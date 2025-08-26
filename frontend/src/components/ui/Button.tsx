@@ -1,5 +1,7 @@
 import React from 'react';
+import { motion } from 'framer-motion';
 import { clsx } from 'clsx';
+import { buttonVariants } from '../../utils/animations';
 
 interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
   variant?: 'primary' | 'secondary' | 'outline' | 'ghost' | 'danger' | 'success';
@@ -20,7 +22,7 @@ export function Button({
   ...props 
 }: ButtonProps) {
   return (
-    <button
+    <motion.button
       className={clsx(
         'inline-flex items-center justify-center font-medium rounded-lg transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed',
         {
@@ -43,17 +45,25 @@ export function Button({
           'px-4 py-2 text-sm': size === 'md',
           'px-6 py-3 text-base': size === 'lg',
         },
-        className
+        className,
+        'hover-glow'
       )}
       disabled={disabled || loading}
+      variants={buttonVariants}
+      whileHover="hover"
+      whileTap="tap"
       {...props}
     >
       {loading && (
-        <div className="mr-2 w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
+        <motion.div 
+          className="mr-2 w-4 h-4 border-2 border-current border-t-transparent rounded-full"
+          animate={{ rotate: 360 }}
+          transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
+        />
       )}
       {Icon && <Icon className={clsx('mr-2', size === 'sm' ? 'w-4 h-4' : size === 'md' ? 'w-4 h-4' : 'w-5 h-5')} />}
       {children}
-    </button>
+    </motion.button>
   );
 }
 
@@ -88,17 +98,42 @@ export function QuickActionButton({
   };
 
   return (
-    <button
+    <motion.button
       onClick={onClick}
       className={clsx(
-        'p-4 text-left rounded-xl border transition-all duration-300 hover:shadow-lg hover:-translate-y-1 group',
+        'p-4 text-left rounded-xl border transition-all duration-300 group',
         variantStyles[variant],
         className
       )}
+      variants={buttonVariants}
+      whileHover="hover"
+      whileTap="tap"
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.3 }}
     >
-      <Icon className={clsx('w-6 h-6 mb-3 transition-transform group-hover:scale-110', iconColors[variant])} />
-      <p className="font-semibold text-gray-900 mb-1">{title}</p>
-      <p className="text-sm text-gray-600">{subtitle}</p>
-    </button>
+      <motion.div
+        whileHover={{ scale: 1.1, rotate: 5 }}
+        transition={{ type: "spring", stiffness: 300 }}
+      >
+        <Icon className={clsx('w-6 h-6 mb-3', iconColors[variant])} />
+      </motion.div>
+      <motion.p 
+        className="font-semibold text-gray-900 mb-1"
+        initial={{ opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.1 }}
+      >
+        {title}
+      </motion.p>
+      <motion.p 
+        className="text-sm text-gray-600"
+        initial={{ opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.2 }}
+      >
+        {subtitle}
+      </motion.p>
+    </motion.button>
   );
 }

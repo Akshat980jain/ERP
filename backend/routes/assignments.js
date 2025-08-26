@@ -4,6 +4,8 @@ const Assignment = require('../models/Assignment');
 const Course = require('../models/Course'); 
 const { auth, authorize, checkVerification } = require('../middleware/auth');
 const { assignmentAttachmentsUpload, submissionFilesUpload } = require('../middleware/upload');
+const emailService = require('../services/emailService');
+const User = require('../models/User');
 
 const router = express.Router();
 
@@ -153,6 +155,26 @@ router.post('/', auth, authorize('faculty', 'admin'), assignmentAttachmentsUploa
 
     await assignment.save();
     await assignment.populate(['course', 'faculty']);
+
+    // Send email notifications to enrolled students
+    try {
+      const enrolledStudents = await User.find({ 
+        _id: { $in: course.students },
+        'preferences.notifications.email': { $ne: false }
+      });
+
+      for (const student of enrolledStudents) {
+        await emailService.sendAssignmentNotification(student, {
+          ...assignment.toObject(),
+          courseName: course.name
+        });
+      }
+      
+      console.log(`Sent assignment notifications to ${enrolledStudents.length} students`);
+    } catch (emailError) {
+      console.error('Assignment notification email error:', emailError);
+      // Don't fail assignment creation if email fails
+    }
 
     console.log('Assignment created successfully:', assignment._id);
     res.status(201).json({ message: 'Assignment created successfully', assignment });

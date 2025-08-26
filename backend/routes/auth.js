@@ -8,6 +8,8 @@ const Course = require('../models/Course');
 const Fee = require('../models/Fee');
 const speakeasy = require('speakeasy');
 const QRCode = require('qrcode');
+const emailService = require('../services/emailService');
+const crypto = require('crypto');
 
 const router = express.Router();
 
@@ -82,6 +84,14 @@ router.post('/register', async (req, res) => {
     
     await user.save();
     const token = generateToken(user._id);
+    
+    // Send welcome email
+    try {
+      await emailService.sendWelcomeEmail(user);
+    } catch (emailError) {
+      console.error('Welcome email send error:', emailError);
+      // Don't fail registration if email fails
+    }
     
     // Remove password from response
     const userResponse = user.toObject();
@@ -333,65 +343,33 @@ router.post('/login', async (req, res) => {
 
     console.log('Password match successful');
 
-    // Update last login
-    user.lastLogin = new Date();
-    await user.save();
+    // Always require email OTP before granting access
+    const tempToken = generateTwoFactorTempToken(user._id);
+    try {
+      const otp = (Math.floor(100000 + Math.random() * 900000)).toString();
+      const expiryMinutes = Number(process.env.OTP_EXPIRY_MINUTES || 10);
+      const otpHash = crypto.createHash('sha256').update(otp).digest('hex');
+      user.emailOTP = otpHash;
+      user.emailOTPExpiresAt = new Date(Date.now() + expiryMinutes * 60 * 1000);
+      await user.save();
 
-    console.log('Generating JWT token...');
-
-    // If user has 2FA enabled, require verification first
-    if (user.twoFactorEnabled) {
-      console.log('User has 2FA enabled, sending temp token');
-      const tempToken = generateTwoFactorTempToken(user._id);
-
-      // If SMS method, generate and send one-time code
-      if (user.twoFactorMethod === 'sms') {
-        try {
-          const smsCode = String(Math.floor(100000 + Math.random() * 900000));
-          user.twoFactorSMSCode = smsCode;
-          user.twoFactorSMSExpiresAt = new Date(Date.now() + 10 * 60 * 1000);
-          await user.save();
-
-          let devCodeToReturn = null;
-          if (process.env.TWILIO_ACCOUNT_SID && process.env.TWILIO_AUTH_TOKEN && process.env.TWILIO_FROM_NUMBER && user.twoFactorPhone) {
-            const twilio = require('twilio')(process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TOKEN);
-            await twilio.messages.create({
-              to: user.twoFactorPhone,
-              from: process.env.TWILIO_FROM_NUMBER,
-              body: `Your EduConnect login code is ${smsCode}`
-            });
-          } else {
-            console.log('Twilio not configured or phone missing. SMS code:', smsCode);
-            if ((process.env.NODE_ENV || 'development') !== 'production') {
-              devCodeToReturn = smsCode;
-            }
-          }
-        } catch (e) {
-          console.error('SMS send error:', e.message);
+      await emailService.sendEmail(
+        user.email,
+        'Your One-Time Password (OTP)',
+        'email-otp',
+        {
+          name: user.firstName || user.name || 'User',
+          otp,
+          purpose: 'log in to your account',
+          expiryMinutes
         }
-
-        return res.json({ success: true, twoFactorRequired: true, tempToken, method: 'sms', maskedPhone: maskPhone(user.twoFactorPhone), devCode: ((process.env.NODE_ENV || 'development') !== 'production') ? user.twoFactorSMSCode : undefined });
-      }
-
-      // Default TOTP
-      return res.json({ success: true, twoFactorRequired: true, tempToken, method: 'totp' });
+      );
+    } catch (e) {
+      console.error('Email OTP send error:', e.message);
+      return res.status(500).json({ success: false, message: 'Failed to send OTP. Please try again.' });
     }
 
-    // Generate token (no 2FA)
-    const token = generateToken(user._id);
-    console.log('Token generated successfully');
-
-    // Remove password from response
-    const userResponse = user.toObject();
-    delete userResponse.password;
-
-    console.log('Login successful for user:', email);
-
-    res.json({ 
-      success: true, 
-      token, 
-      user: userResponse 
-    });
+    return res.json({ success: true, otpRequired: true, tempToken });
   } catch (error) {
     console.error('Login error details:', error);
     console.error('Error stack:', error.stack);
@@ -1467,6 +1445,253 @@ router.get('/admins-by-program', auth, authorize('admin'), async (req, res) => {
       success: false, 
       message: 'Server error' 
     });
+  }
+});
+
+// @route   POST /api/auth/forgot-password
+// @desc    Send password reset email
+// @access  Public
+router.post('/forgot-password', async (req, res) => {
+  try {
+    const { email } = req.body;
+
+    if (!email) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Email is required' 
+      });
+    }
+
+    const user = await User.findOne({ email: email.toLowerCase() });
+    if (!user) {
+      return res.status(404).json({ 
+        success: false, 
+        message: 'User not found' 
+      });
+    }
+
+    // Generate reset token
+    const resetToken = jwt.sign(
+      { id: user._id, type: 'password-reset' },
+      process.env.JWT_SECRET || 'your-secret-key',
+      { expiresIn: '24h' }
+    );
+
+    // Send password reset email
+    try {
+      await emailService.sendPasswordResetEmail(user, resetToken);
+      res.json({ 
+        success: true, 
+        message: 'Password reset email sent successfully' 
+      });
+    } catch (emailError) {
+      console.error('Password reset email error:', emailError);
+      res.status(500).json({ 
+        success: false, 
+        message: 'Failed to send password reset email' 
+      });
+    }
+  } catch (error) {
+    console.error('Forgot password error:', error);
+    res.status(500).json({ 
+      success: false, 
+      message: 'Server error' 
+    });
+  }
+});
+
+// @route   POST /api/auth/reset-password
+// @desc    Reset password with token
+// @access  Public
+router.post('/reset-password', async (req, res) => {
+  try {
+    const { token, newPassword } = req.body;
+
+    if (!token || !newPassword) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Token and new password are required' 
+      });
+    }
+
+    // Verify token
+    const decoded = jwt.verify(token, process.env.JWT_SECRET || 'your-secret-key');
+    
+    if (decoded.type !== 'password-reset') {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Invalid token type' 
+      });
+    }
+
+    const user = await User.findById(decoded.id);
+    if (!user) {
+      return res.status(404).json({ 
+        success: false, 
+        message: 'User not found' 
+      });
+    }
+
+    // Update password
+    user.password = newPassword;
+    await user.save();
+
+    res.json({ 
+      success: true, 
+      message: 'Password reset successfully' 
+    });
+  } catch (error) {
+    console.error('Reset password error:', error);
+    if (error.name === 'JsonWebTokenError' || error.name === 'TokenExpiredError') {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Invalid or expired token' 
+      });
+    }
+    res.status(500).json({ 
+      success: false, 
+      message: 'Server error' 
+    });
+  }
+});
+
+// @route   POST /api/auth/test-email
+// @desc    Test email service
+// @access  Private (admin only)
+router.post('/test-email', auth, authorize('admin'), async (req, res) => {
+  try {
+    const { email } = req.body;
+
+    if (!email) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Email address is required' 
+      });
+    }
+
+    const testResult = await emailService.testEmailService();
+    
+    if (testResult.success) {
+      res.json({ 
+        success: true, 
+        message: 'Email service test completed successfully',
+        details: testResult
+      });
+    } else {
+      res.status(500).json({ 
+        success: false, 
+        message: 'Email service test failed',
+        details: testResult
+      });
+    }
+  } catch (error) {
+    console.error('Test email error:', error);
+    res.status(500).json({ 
+      success: false, 
+      message: 'Server error' 
+    });
+  }
+});
+
+// ============ EMAIL OTP: REQUEST & VERIFY ============
+
+// @route   POST /api/auth/request-otp
+// @desc    Generate and send OTP to user's email
+// @access  Public
+router.post('/request-otp', async (req, res) => {
+  try {
+    const { email, purpose } = req.body; // purpose: 'login' | 'verify-email' | '2fa'
+
+    if (!email) {
+      return res.status(400).json({ success: false, message: 'Email is required' });
+    }
+
+    const user = await User.findOne({ email: email.toLowerCase() });
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'User not found' });
+    }
+
+    // Generate 6-digit OTP
+    const otp = (Math.floor(100000 + Math.random() * 900000)).toString();
+    const expiryMinutes = Number(process.env.OTP_EXPIRY_MINUTES || 10);
+    const expiresAt = new Date(Date.now() + expiryMinutes * 60 * 1000);
+
+    // Optionally hash OTP before storing
+    const otpHash = crypto.createHash('sha256').update(otp).digest('hex');
+
+    user.emailOTP = otpHash;
+    user.emailOTPExpiresAt = expiresAt;
+    await user.save();
+
+    // Send email
+    await emailService.sendEmail(
+      user.email,
+      'Your One-Time Password (OTP)',
+      'email-otp',
+      {
+        name: user.firstName || user.name || 'User',
+        otp,
+        purpose: purpose || 'continue',
+        expiryMinutes
+      }
+    );
+
+    return res.json({ success: true, message: 'OTP sent to email' });
+  } catch (error) {
+    console.error('Request OTP error:', error);
+    return res.status(500).json({ success: false, message: 'Server error' });
+  }
+});
+
+// @route   POST /api/auth/verify-otp
+// @desc    Verify email OTP and (optionally) log in
+// @access  Public
+router.post('/verify-otp', async (req, res) => {
+  try {
+    const { email, otp, tempToken, issueToken = true } = req.body;
+
+    if (!email || !otp) {
+      return res.status(400).json({ success: false, message: 'Email and OTP are required' });
+    }
+
+    const user = await User.findOne({ email: email.toLowerCase() }).select('+emailOTP');
+    if (!user || !user.emailOTP || !user.emailOTPExpiresAt) {
+      return res.status(400).json({ success: false, message: 'No OTP pending for this user' });
+    }
+
+    if (user.emailOTPExpiresAt < new Date()) {
+      user.emailOTP = undefined;
+      user.emailOTPExpiresAt = undefined;
+      await user.save();
+      return res.status(400).json({ success: false, message: 'OTP expired' });
+    }
+
+    // Compare hashed OTP
+    const providedHash = crypto.createHash('sha256').update(otp).digest('hex');
+    if (providedHash !== user.emailOTP) {
+      return res.status(400).json({ success: false, message: 'Invalid OTP' });
+    }
+
+    // Invalidate OTP on success
+    user.emailOTP = undefined;
+    user.emailOTPExpiresAt = undefined;
+    user.isVerified = true;
+    await user.save();
+
+    if (issueToken) {
+      // Successful login: update lastLogin
+      user.lastLogin = new Date();
+      await user.save();
+      const token = generateToken(user._id);
+      const userResponse = user.toObject();
+      delete userResponse.password;
+      return res.json({ success: true, message: 'OTP verified', token, user: userResponse });
+    }
+
+    return res.json({ success: true, message: 'OTP verified' });
+  } catch (error) {
+    console.error('Verify OTP error:', error);
+    return res.status(500).json({ success: false, message: 'Server error' });
   }
 });
 

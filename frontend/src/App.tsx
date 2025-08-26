@@ -1,7 +1,10 @@
 import React, { useState } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { useAuth, AuthProvider } from './contexts/AuthContext';
+import { BackgroundProvider } from './contexts/BackgroundContext';
 import { LoginForm } from './components/auth/LoginForm';
+import EmailOtpPage from './components/auth/EmailOtpPage';
 import MobileLanding from './components/auth/MobileLanding';
 import MobileRegister from './components/auth/MobileRegister';
 import MobileLogin from './components/auth/MobileLogin';
@@ -35,9 +38,15 @@ import { SettingsModule } from './components/modules/SettingsModule';
 import { TransportModule } from './components/modules/TransportModule';
 import { HostelModule } from './components/modules/HostelModule';
 import { ParentPortal } from './components/modules/ParentPortal';
+import { pageVariants, pageTransition } from './utils/animations';
+import { DynamicBackground } from './components/ui/DynamicBackground';
+import { BackgroundControls } from './components/ui/BackgroundControls';
+import { ColorTransition } from './components/ui/ColorTransition';
+import { BackgroundShowcase } from './components/ui/BackgroundShowcase';
 
 function AppContent() {
   const { user, isLoading } = useAuth();
+  const { theme } = useAuth();
   const isMobile = typeof window !== 'undefined' && window.matchMedia('(max-width: 767px)').matches;
   const [activeTab, setActiveTab] = useState('dashboard');
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
@@ -66,6 +75,7 @@ function AppContent() {
   return (
     <Routes>
       <Route path="/request-verification" element={<RequestVerificationPage />} />
+      <Route path="/verify-email-otp" element={<EmailOtpPage />} />
       <Route path="/login" element={user ? <Navigate to="/app" replace /> : <LoginForm />} />
       {/* Root route: show mobile landing on phones, login on desktop; redirect to app when authenticated */}
       <Route path="/" element={user ? <Navigate to="/app" replace /> : (isMobile ? <MobileLanding /> : <LoginForm />)} />
@@ -75,7 +85,14 @@ function AppContent() {
       <Route path="/mobile/reset-password" element={<MobileResetPassword />} />
       <Route path="/app" element={
         !user ? <LoginForm /> : (
-          <div className="min-h-screen bg-gray-100 flex">
+          <div className="min-h-screen flex relative overflow-hidden">
+            {/* Enhanced Dynamic Background with better positioning */}
+            <DynamicBackground variant="floating-orbs" intensity="medium" colorScheme="dynamic" theme={theme} />
+            
+            {/* Additional background layers for depth */}
+            <div className="absolute inset-0 bg-gradient-to-br from-blue-50/30 via-purple-50/20 to-green-50/30 dark:from-gray-900/50 dark:via-blue-900/30 dark:to-purple-900/20" />
+            <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-blue-100/20 via-transparent to-purple-100/20 dark:from-blue-900/20 dark:to-purple-900/20" />
+            
             {/* Sidebar */}
             <div className={mobileMenuOpen ? 'block md:block' : 'hidden md:block'}>
               <div className="fixed left-0 top-0 h-full z-40 md:z-30">
@@ -88,26 +105,40 @@ function AppContent() {
               </div>
             </div>
             
-            {/* Main Content Area with dynamic left margin */}
-            <div className={`flex-1 flex flex-col transition-all duration-300 ${sidebarCollapsed ? 'md:ml-20' : 'md:ml-80'} ml-0 bg-white dark:bg-gray-900`}>
+            {/* Main Content Area */}
+            <div className={`flex-1 flex flex-col transition-all duration-300 ${sidebarCollapsed ? 'md:ml-20' : 'md:ml-80'} ml-0 relative`}>
+              {/* Content background with enhanced glassmorphism effect */}
+              <div className="absolute inset-0 bg-card backdrop-blur-sm border-l border-gray-200/50 dark:border-gray-700/50" />
+              
               <Header 
                 onNotificationClick={handleNotificationClick}
                 unreadCount={unreadNotificationCount}
                 onMenuClick={() => setMobileMenuOpen(true)}
               />
-              <main className="flex-1 p-6 overflow-y-auto">
+              
+              {/* Main content */}
+              <main className="flex-1 p-6 overflow-y-auto relative z-10">
+                <AnimatePresence mode="wait">
+                  <motion.div
+                    key={activeTab}
+                    variants={pageVariants}
+                    initial="initial"
+                    animate="in"
+                    exit="out"
+                    transition={pageTransition}
+                  >
                 {(() => {
                   switch (activeTab) {
                     case 'dashboard':
                       switch (user.role) {
                         case 'student':
-                          return <StudentDashboard />;
+                          return <StudentDashboard onTabChange={setActiveTab} />;
                         case 'faculty':
                           return <FacultyDashboard />;
                         case 'admin':
                           return <AdminDashboard />;
                         default:
-                          return <StudentDashboard />;
+                          return <StudentDashboard onTabChange={setActiveTab} />;
                       }
                     case 'academic':
                       return <AcademicModule />;
@@ -161,6 +192,8 @@ function AppContent() {
                       return <ReportsModule />;
                     case 'settings': // Admin only
                       return <SettingsModule />;
+                    case 'background-showcase': // Background showcase for all users
+                      return <BackgroundShowcase />;
                     default:
                       return (
                         <div className="text-center py-12">
@@ -170,8 +203,15 @@ function AppContent() {
                       );
                   }
                 })()}
+                  </motion.div>
+                </AnimatePresence>
               </main>
             </div>
+            {/* Background Controls */}
+            <BackgroundControls />
+            
+            {/* Color Transition Effects */}
+            <ColorTransition />
           </div>
         )
       } />
@@ -184,9 +224,11 @@ function AppContent() {
 function App() {
   return (
     <AuthProvider>
-      <Router>
-        <AppContent />
-      </Router>
+      <BackgroundProvider>
+        <Router>
+          <AppContent />
+        </Router>
+      </BackgroundProvider>
     </AuthProvider>
   );
 }

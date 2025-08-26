@@ -118,6 +118,20 @@ class ApiClient {
     }
   }
 
+  async verifyOtp(email: string, otp: string) {
+    return this.request('/auth/verify-otp', {
+      method: 'POST',
+      body: JSON.stringify({ email, otp, issueToken: true })
+    }, '');
+  }
+
+  async requestOtp(email: string, purpose: string = 'login') {
+    return this.request('/auth/request-otp', {
+      method: 'POST',
+      body: JSON.stringify({ email, purpose })
+    }, '');
+  }
+
   async verifyLogin2FA(tempToken: string, code: string) {
     // Do not attach Authorization when verifying 2FA with the temporary token
     return this.request('/auth/2fa/verify-login', {

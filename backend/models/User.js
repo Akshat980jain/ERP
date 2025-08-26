@@ -81,6 +81,14 @@ const userSchema = new mongoose.Schema({
   twoFactorSMSExpiresAt: {
     type: Date
   },
+  // Email OTP for passwordless login or verification
+  emailOTP: {
+    type: String,
+    select: false
+  },
+  emailOTPExpiresAt: {
+    type: Date
+  },
   approvedBy: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User'

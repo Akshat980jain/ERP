@@ -1,5 +1,7 @@
 import React from 'react';
+import { motion } from 'framer-motion';
 import { clsx } from 'clsx';
+import { cardVariants } from '../../utils/animations';
 
 interface CardProps {
   children: React.ReactNode;
@@ -11,7 +13,7 @@ interface CardProps {
 
 export function Card({ children, className, padding = 'md', variant = 'default', hover = false }: CardProps) {
   return (
-    <div
+    <motion.div
       className={clsx(
         'rounded-xl border transition-all duration-300',
         {
@@ -23,17 +25,17 @@ export function Card({ children, className, padding = 'md', variant = 'default',
           'bg-white/50 border-gray-300/60 shadow-none backdrop-blur-sm': variant === 'outlined',
           // Gradient variant
           'bg-gradient-to-br from-white to-gray-50/50 border-gray-200/40 shadow-lg shadow-gray-200/30': variant === 'gradient',
-          // Hover effects
-          'hover:shadow-lg hover:shadow-gray-200/30 hover:-translate-y-1': hover && variant === 'default',
-          'hover:shadow-2xl hover:shadow-gray-200/50 hover:-translate-y-1': hover && variant === 'elevated',
-          'hover:shadow-md hover:shadow-gray-200/20 hover:-translate-y-1': hover && variant === 'outlined',
-          'hover:shadow-xl hover:shadow-gray-200/40 hover:-translate-y-1': hover && variant === 'gradient',
         },
         className
       )}
+      variants={cardVariants}
+      initial="initial"
+      animate="animate"
+      whileHover={hover ? "hover" : undefined}
+      whileTap="tap"
     >
       {children}
-    </div>
+    </motion.div>
   );
 }
 
@@ -78,32 +80,62 @@ export function StatCard({
   className?: string;
 }) {
   return (
-    <Card className={clsx('overflow-hidden', className)} hover>
+    <Card className={clsx('overflow-hidden hover-glow', className)} hover>
       <div className="relative p-6">
         <div className="flex items-center justify-between">
           <div className="flex-1">
-            <p className="text-sm font-medium text-gray-600 mb-1">{title}</p>
-            <p className="text-3xl font-bold text-gray-900 mb-2">{value}</p>
+            <motion.p 
+              className="text-sm font-medium text-gray-600 mb-1"
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.1 }}
+            >
+              {title}
+            </motion.p>
+            <motion.p 
+              className="text-3xl font-bold text-gray-900 mb-2"
+              initial={{ opacity: 0, scale: 0.8 }}
+              animate={{ opacity: 1, scale: 1 }}
+              transition={{ delay: 0.2, type: "spring", stiffness: 200 }}
+            >
+              {value}
+            </motion.p>
             {trend && trendValue && (
-              <div className={clsx(
-                'flex items-center text-sm font-medium',
-                trend === 'up' ? 'text-green-600' : 
-                trend === 'down' ? 'text-red-600' : 'text-gray-600'
-              )}>
+              <motion.div 
+                className={clsx(
+                  'flex items-center text-sm font-medium',
+                  trend === 'up' ? 'text-green-600' : 
+                  trend === 'down' ? 'text-red-600' : 'text-gray-600'
+                )}
+                initial={{ opacity: 0, x: -10 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ delay: 0.3 }}
+              >
                 {trend === 'up' && <span className="mr-1">↗</span>}
                 {trend === 'down' && <span className="mr-1">↘</span>}
                 {trend === 'neutral' && <span className="mr-1">→</span>}
                 {trendValue}
-              </div>
+              </motion.div>
             )}
           </div>
-          <div className="relative">
+          <motion.div 
+            className="relative"
+            initial={{ opacity: 0, scale: 0.5, rotate: -10 }}
+            animate={{ opacity: 1, scale: 1, rotate: 0 }}
+            transition={{ delay: 0.4, type: "spring", stiffness: 300 }}
+            whileHover={{ scale: 1.1, rotate: 5 }}
+          >
             <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-blue-50 to-blue-100 flex items-center justify-center">
               <Icon className="w-6 h-6 text-blue-600" />
             </div>
-          </div>
+          </motion.div>
         </div>
-        <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/5 to-transparent opacity-0 hover:opacity-100 transition-opacity duration-300" />
+        <motion.div 
+          className="absolute inset-0 bg-gradient-to-r from-transparent via-white/5 to-transparent opacity-0 hover:opacity-100 transition-opacity duration-300"
+          initial={{ opacity: 0 }}
+          whileHover={{ opacity: 1 }}
+          transition={{ duration: 0.3 }}
+        />
       </div>
     </Card>
   );
