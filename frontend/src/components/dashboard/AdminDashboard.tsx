@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Users, GraduationCap, BookOpen, DollarSign, Shield, CheckCircle, XCircle } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardContent } from '../ui/Card';
+import { Button } from '../ui/Button';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line } from 'recharts';
 import { useAuth } from '../../contexts/AuthContext';
 import { User as AppUser } from '../../types';
@@ -223,6 +224,7 @@ export function AdminDashboard() {
   const [revenueData, setRevenueData] = useState<{ month: string; amount: number }[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [genMsg, setGenMsg] = useState('');
 
   useEffect(() => {
     const fetchStats = async () => {
@@ -259,6 +261,75 @@ export function AdminDashboard() {
     <div className="space-y-6">
       <AdminVerificationPanel />
       <ProgramAdminsPanel />
+      <Card>
+        <CardHeader>
+          <CardTitle>Permissions Matrix</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="overflow-x-auto">
+            <table className="min-w-full text-sm">
+              <thead>
+                <tr className="text-left text-gray-600">
+                  <th className="py-2 pr-4">Module</th>
+                  <th className="py-2 pr-4">Student</th>
+                  <th className="py-2 pr-4">Faculty</th>
+                  <th className="py-2 pr-4">Admin</th>
+                  <th className="py-2 pr-4">Library</th>
+                  <th className="py-2 pr-4">Placement</th>
+                </tr>
+              </thead>
+              <tbody>
+                {[
+                  { m: 'Courses', s: 'view', f: 'manage own', a: 'manage all', l: '-', p: '-' },
+                  { m: 'Assignments', s: 'submit', f: 'create/grade', a: 'manage', l: '-', p: '-' },
+                  { m: 'Exams', s: 'attempt', f: 'create/grade', a: 'manage', l: '-', p: '-' },
+                  { m: 'Attendance', s: 'view', f: 'mark', a: 'manage', l: '-', p: '-' },
+                  { m: 'Finance', s: 'pay/view', f: '-', a: 'manage', l: '-', p: '-' },
+                  { m: 'Library', s: 'view/hold', f: 'view', a: 'manage', l: 'manage', p: '-' },
+                  { m: 'Placement', s: 'apply', f: 'refer', a: 'manage', l: '-', p: 'manage' },
+                  { m: 'Notifications', s: 'view', f: 'create', a: 'create', l: 'create', p: 'create' },
+                ].map(row => (
+                  <tr key={row.m} className="border-t">
+                    <td className="py-2 pr-4 font-medium">{row.m}</td>
+                    <td className="py-2 pr-4">{row.s}</td>
+                    <td className="py-2 pr-4">{row.f}</td>
+                    <td className="py-2 pr-4">{row.a}</td>
+                    <td className="py-2 pr-4">{row.l}</td>
+                    <td className="py-2 pr-4">{row.p}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Scheduled Reminders</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="flex items-center justify-between">
+            <div className="text-sm text-gray-600">Generate reminders for fees due, upcoming assignments, and low attendance.</div>
+            <Button
+              onClick={async () => {
+                setGenMsg('');
+                try {
+                  const res = await apiClient.generateReminders();
+                  const created = (res as any)?.created ?? 0;
+                  setGenMsg(`Generated ${created} reminder(s).`);
+                } catch {
+                  setGenMsg('Failed to generate reminders');
+                }
+              }}
+              size="sm"
+            >
+              Run Now
+            </Button>
+          </div>
+          {genMsg && <div className="mt-2 text-sm text-gray-700">{genMsg}</div>}
+        </CardContent>
+      </Card>
       {loading ? (
         <div className="p-6 text-center text-gray-500">Loading stats...</div>
       ) : error ? (

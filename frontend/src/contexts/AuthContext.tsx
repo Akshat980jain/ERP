@@ -1,6 +1,7 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
 import { User } from '../types';
 import apiClient from '../utils/api';
+import { io, Socket } from 'socket.io-client';
 
 interface AuthContextType {
   user: User | null;
@@ -13,6 +14,7 @@ interface AuthContextType {
   token: string | null;
   theme: 'light' | 'dark';
   toggleTheme: () => void;
+  socket?: Socket | null;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -23,6 +25,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [token, setToken] = useState<string | null>(null);
   const [theme, setTheme] = useState<'light' | 'dark'>(() => (localStorage.getItem('theme') as 'light' | 'dark') || 'light');
   const [pendingEmail, setPendingEmail] = useState<string | null>(null);
+  const socketRef = useRef<Socket | null>(null);
 
   useEffect(() => {
     // Check for existing token and user
@@ -38,6 +41,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setIsLoading(false);
     }
   }, []);
+
+  // Manage socket connection lifecycle
+  useEffect(() => {
+    if (user && !socketRef.current) {
+      const socket = io('http://localhost:5000', { transports: ['websocket'] });
+      socketRef.current = socket;
+      socket.on('connect', () => {
+        // join personal room using user id
+        socket.emit('join-room', (user as any)._id || (user as any).id);
+      });
+    }
+    return () => {
+      socketRef.current?.disconnect();
+      socketRef.current = null;
+    };
+  }, [user]);
 
   useEffect(() => {
     const root = window.document.documentElement;
@@ -92,6 +111,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       localStorage.setItem('educonnect_user', JSON.stringify((data as { user: User }).user));
       localStorage.setItem('educonnect_token', (data as { token: string }).token);
       
+      // connect socket after successful login
+      if (!socketRef.current) {
+        const socket = io('http://localhost:5000', { transports: ['websocket'] });
+        socketRef.current = socket;
+        socket.on('connect', () => {
+          socket.emit('join-room', ((data as { user: any }).user)._id);
+        });
+      }
+
       return { success: true };
     } catch (error) {
       console.error('Login error:', error);
@@ -163,6 +191,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setToken(null);
     localStorage.removeItem('educonnect_user');
     localStorage.removeItem('educonnect_token');
+    socketRef.current?.disconnect();
+    socketRef.current = null;
   };
 
   const toggleTheme = () => {
@@ -175,7 +205,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   return (
-    <AuthContext.Provider value={{ user, login, verifyTwoFactor, verifyEmailOtp, logout, updateUser, isLoading, token, theme, toggleTheme }}>
+    <AuthContext.Provider value={{ user, login, verifyTwoFactor, verifyEmailOtp, logout, updateUser, isLoading, token, theme, toggleTheme, socket: socketRef.current }}>
       {children}
     </AuthContext.Provider>
   );

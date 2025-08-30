@@ -456,9 +456,21 @@ export function Sidebar({
   }, [accessStats, getMenuItems]);
 
   // Enhanced filtering - now just returns all menu items
+  // Gate items by role-based matrix (coarse-grained): hide modules not relevant to the user's role
   const filteredMenuItems = useMemo(() => {
-    return menuItems;
-  }, [menuItems]);
+    const role = user?.role;
+    const allowed = new Set<string>([
+      'dashboard','notifications','background-showcase','profile'
+    ]);
+    if (role === 'student') {
+      ['academic','schedule','exams','assignments','finance','library','placement','services','transport'].forEach(id=>allowed.add(id));
+    } else if (role === 'faculty') {
+      ['courses','exams','feedback','calendar','assignments','attendance','marks','students','schedule'].forEach(id=>allowed.add(id));
+    } else if (role === 'admin') {
+      ['analytics','users','courses','finance','reports','security','hostel','transport'].forEach(id=>allowed.add(id));
+    }
+    return menuItems.filter(mi => allowed.has(mi.id));
+  }, [menuItems, user]);
 
   // Group items by category with enhanced sorting
   const groupedMenuItems = useMemo(() => {

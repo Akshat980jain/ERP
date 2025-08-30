@@ -160,6 +160,75 @@ const io = new Server(server, {
   }
 });
 
+// Cron: generate reminders daily at 08:00 server time
+try {
+  const cron = require('node-cron');
+  const Notification = require('./models/Notification');
+  const Fee = require('./models/Fee');
+  const Assignment = require('./models/Assignment');
+  const Attendance = require('./models/Attendance');
+  const User = require('./models/User');
+  const { authorize } = require('./middleware/auth');
+
+  // Lightweight inline scheduler that mimics the logic in /notifications/generate-reminders
+  cron.schedule('0 8 * * *', async () => {
+    try {
+      const now = new Date();
+      const inDays = (n) => new Date(now.getTime() + n * 24 * 60 * 60 * 1000);
+      const sevenDays = inDays(7);
+      const threeDays = inDays(3);
+      const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+
+      // Fees
+      const pendingFees = await Fee.find({ status: { $in: ['pending', 'overdue'] }, dueDate: { $lte: sevenDays } }).populate('student', '_id');
+      for (const fee of pendingFees) {
+        if (!fee.student) continue;
+        const recent = await Notification.findOne({ category: 'finance', 'targetUsers': fee.student._id, title: { $regex: new RegExp(`${fee.type}`, 'i') }, createdAt: { $gte: inDays(-1) } });
+        if (recent) continue;
+        const doc = await Notification.create({
+          title: `Fee ${fee.status === 'overdue' ? 'overdue' : 'due soon'}: ${fee.type}`,
+          message: `Amount ₹${fee.amount} ${fee.status === 'overdue' ? 'is overdue' : 'is due by ' + fee.dueDate.toLocaleDateString()}.`,
+          type: fee.status === 'overdue' ? 'warning' : 'info',
+          category: 'finance',
+          targetUsers: [fee.student._id],
+          createdBy: fee.student._id,
+        });
+        try { if (global.io) global.io.to(String(fee.student._id)).emit('notification', { _id: doc._id, title: doc.title, message: doc.message, type: doc.type, category: doc.category, createdAt: doc.createdAt, targetRoles: doc.targetRoles, read: false }); } catch {}
+      }
+
+      // Assignments
+      const upcomingAssignments = await Assignment.find({ dueDate: { $gte: now, $lte: threeDays }, status: { $in: ['published'] } }).select('title dueDate');
+      if (upcomingAssignments.length > 0) {
+        const recent = await Notification.findOne({ category: 'academic', title: /Assignments due soon/i, createdAt: { $gte: inDays(-1) } });
+        if (!recent) {
+          const doc = await Notification.create({ title: 'Assignments due soon', message: `${upcomingAssignments.length} assignment(s) due within 3 days. Please review and submit on time.`, type: 'info', category: 'academic', targetRoles: ['student'], createdBy: null });
+          try { if (global.io) global.io.emit('notification', { _id: doc._id, title: doc.title, message: doc.message, type: doc.type, category: doc.category, createdAt: doc.createdAt, targetRoles: doc.targetRoles, read: false }); } catch {}
+        }
+      }
+
+      // Attendance
+      const pipeline = [
+        { $match: { createdAt: { $gte: thirtyDaysAgo } } },
+        { $group: { _id: { student: '$student' }, total: { $sum: 1 }, presents: { $sum: { $cond: [{ $eq: ['$status', 'present'] }, 1, 0] } } } },
+        { $addFields: { percentage: { $multiply: [{ $divide: ['$presents', '$total'] }, 100] } } },
+        { $match: { percentage: { $lt: 75 } } }
+      ];
+      const lowAttendance = await Attendance.aggregate(pipeline);
+      for (const a of lowAttendance) {
+        const sid = a._id.student;
+        const recent = await Notification.findOne({ category: 'academic', 'targetUsers': sid, title: /Low attendance alert/i, createdAt: { $gte: inDays(-1) } });
+        if (recent) continue;
+        const doc = await Notification.create({ title: 'Low attendance alert', message: 'Your attendance in the last 30 days is below 75%. Please improve attendance.', type: 'warning', category: 'academic', targetUsers: [sid], createdBy: sid });
+        try { if (global.io) global.io.to(String(sid)).emit('notification', { _id: doc._id, title: doc.title, message: doc.message, type: doc.type, category: doc.category, createdAt: doc.createdAt, targetRoles: doc.targetRoles, read: false }); } catch {}
+      }
+      console.log('Daily reminders generated');
+    } catch (e) {
+      console.error('Cron reminder generation failed:', e);
+    }
+  });
+} catch (e) {
+  console.warn('Cron not initialized:', e?.message);
+}
 io.on('connection', (socket) => {
   console.log('User connected:', socket.id);
 

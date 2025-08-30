@@ -6,14 +6,14 @@ import { useAuth } from '../../contexts/AuthContext';
 import apiClient from '../../utils/api';
 
 interface Notification {
-  id: string;
+  _id: string;
   title: string;
   message: string;
   type: 'info' | 'success' | 'warning' | 'error';
   category: 'academic' | 'finance' | 'library' | 'placement' | 'general';
   read: boolean;
   createdAt: string;
-  targetRole?: string[];
+  targetRoles?: string[];
 }
 
 export function NotificationModule() {
@@ -27,10 +27,10 @@ export function NotificationModule() {
       setLoading(true);
       try {
         const res = await apiClient.getNotifications();
-        if (res && Array.isArray(res.notifications)) {
-          setNotifications(res.notifications);
-        } else if (res && Array.isArray(res)) {
-          setNotifications(res);
+        if (res && Array.isArray((res as any).notifications)) {
+          setNotifications((res as any).notifications);
+        } else if (Array.isArray(res as any)) {
+          setNotifications(res as any);
         } else {
           setNotifications([]);
         }
@@ -42,8 +42,21 @@ export function NotificationModule() {
     fetchNotifications();
   }, []);
 
+  // Realtime: listen for server-pushed notifications
+  const { socket } = useAuth();
+  useEffect(() => {
+    if (!socket) return;
+    const handler = (notification: any) => {
+      setNotifications(prev => [{ ...(notification as Notification), read: false }, ...prev]);
+    };
+    socket.on('notification', handler);
+    return () => {
+      socket.off('notification', handler);
+    };
+  }, [socket]);
+
   const filteredNotifications = notifications.filter(notification => {
-    if (!notification.targetRole?.includes(user?.role || '')) return false;
+    if (notification.targetRoles && !notification.targetRoles.includes(user?.role || '')) return false;
     switch (filter) {
       case 'unread':
         return !notification.read;
@@ -57,24 +70,22 @@ export function NotificationModule() {
     }
   });
 
-  const markAsRead = (id: string) => {
-    setNotifications(prev => 
-      prev.map(notif => 
-        notif.id === id ? { ...notif, read: true } : notif
-      )
-    );
-    // Optionally, call apiClient.markNotificationAsRead(id)
+  const markAsRead = async (id: string) => {
+    try {
+      await apiClient.markNotificationAsRead(id);
+      setNotifications(prev => prev.map(notif => notif._id === id ? { ...notif, read: true } : notif));
+    } catch {}
   };
 
-  const markAllAsRead = () => {
-    setNotifications(prev => 
-      prev.map(notif => ({ ...notif, read: true }))
-    );
-    // Optionally, call apiClient.markAllNotificationsAsRead()
+  const markAllAsRead = async () => {
+    try {
+      await apiClient.markAllNotificationsAsRead();
+      setNotifications(prev => prev.map(notif => ({ ...notif, read: true })));
+    } catch {}
   };
 
   const deleteNotification = (id: string) => {
-    setNotifications(prev => prev.filter(notif => notif.id !== id));
+    setNotifications(prev => prev.filter(notif => notif._id !== id));
     // Optionally, call an API to delete notification
   };
 
@@ -106,7 +117,7 @@ export function NotificationModule() {
     }
   };
 
-  const unreadCount = notifications.filter(n => !n.read && n.targetRole?.includes(user?.role || '')).length;
+  const unreadCount = notifications.filter(n => !n.read && (n.targetRoles ? n.targetRoles.includes(user?.role || '') : true)).length;
 
   return (
     <div className="space-y-6">
@@ -159,7 +170,7 @@ export function NotificationModule() {
           </Card>
         ) : (
           filteredNotifications.map((notification) => (
-            <Card key={notification.id} className={`${!notification.read ? 'border-l-4 border-l-blue-500 bg-blue-50' : ''}`}>
+            <Card key={notification._id} className={`${!notification.read ? 'border-l-4 border-l-blue-500 bg-blue-50' : ''}`}>
               <CardContent className="p-4">
                 <div className="flex items-start justify-between">
                   <div className="flex items-start space-x-3 flex-1">
@@ -187,7 +198,7 @@ export function NotificationModule() {
                   <div className="flex items-center space-x-2 ml-4">
                     {!notification.read && (
                       <Button
-                        onClick={() => markAsRead(notification.id)}
+                        onClick={() => markAsRead(notification._id)}
                         variant="outline"
                         size="sm"
                       >
@@ -195,7 +206,7 @@ export function NotificationModule() {
                       </Button>
                     )}
                     <button
-                      onClick={() => deleteNotification(notification.id)}
+                      onClick={() => deleteNotification(notification._id)}
                       className="text-gray-400 hover:text-red-500 transition-colors"
                     >
                       <X className="w-4 h-4" />

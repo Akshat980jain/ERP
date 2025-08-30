@@ -256,6 +256,10 @@ class ApiClient {
     return this.request('/notifications/mark-all-read', { method: 'PUT' });
   }
 
+  async generateReminders() {
+    return this.request('/notifications/generate-reminders', { method: 'POST' });
+  }
+
   // Academic
   async getAttendance(courseId?: string) {
     const queryString = courseId ? `?courseId=${courseId}` : '';
